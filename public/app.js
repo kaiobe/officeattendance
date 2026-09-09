@@ -20,6 +20,7 @@ const longDate = (s) => { const [y,m,d] = parse(s); return `${d} ${['January','F
 const nowHHMM = () => { const d = new Date(); return `${pad(d.getHours())}:${pad(d.getMinutes())}`; };
 const minsBetween = (a, b) => { if (!a || !b) return 0; const [ah,am] = a.split(':').map(Number), [bh,bm] = b.split(':').map(Number); let x = bh*60+bm-(ah*60+am); if (x < 0) x += 1440; return x; };
 const fmtHrs = (h) => (Math.round(h * 100) / 100).toLocaleString('en-AU', { maximumFractionDigits: 2 });
+const fmtHrs1 = (h) => (Math.round(h * 10) / 10).toLocaleString('en-AU', { maximumFractionDigits: 1 });
 const fmtNum = (n) => n.toLocaleString('en-AU', { maximumFractionDigits: 1 });
 const pct = (v) => v == null ? '—' : `${(v * 100).toFixed(1)}`;
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -153,7 +154,7 @@ function renderLog() {
     $('clearRange').onclick = () => { S.range = []; renderAll(); };
   }
 
-  const groups = [['work', 'At work'], ['leave', 'Leave'], ['off', 'Not a work day']];
+  const groups = [['work', 'Work'], ['leave', 'Leave'], ['off', 'Not a work day']];
   $('chipzone').innerHTML = groups.map(([g, title]) => `
     <div class="chipgroup"><div class="glabel">${title}</div><div class="chips">
       ${S.codes.filter((c) => c.group === g).map((c) => `
@@ -178,11 +179,47 @@ function updateHrs() {
 }
 
 /* ---------- grid ---------- */
+
+// A gap is "ahead" at or below zero, "short" above it. Blank when there's nothing to compare.
+function gapCell(gap, basis, fmt = fmtNum) {
+  if (!basis) return '<td class="stat">—</td>';
+  const cls = gap <= 0 ? 'gap-ok' : 'gap-short';
+  return `<td class="stat"><span class="${cls}">${gap > 0 ? '+' : ''}${fmt(gap)}</span></td>`;
+}
+
+// Short names: the Days / Hours group headers above them supply the context.
+const DAY_COLS  = ['Work', 'Office', 'D%', 'Req', 'Gap'];
+const HOUR_COLS = ['Office', 'Avail', 'H%', 'Req', 'Gap', 'Avg/day'];
+
+function dayStatCells(m) {
+  return `<td class="stat">${m.workDays || '—'}</td>
+    <td class="stat">${m.officeDays || '—'}</td>
+    <td class="stat">${m.pctDays == null ? '—' : pct(m.pctDays) + '%'}</td>
+    <td class="stat">${m.workDays ? fmtNum(m.reqDays) : '—'}</td>
+    ${gapCell(m.gapDays, m.workDays)}`;
+}
+
+function hourStatCells(m) {
+  const hasHrs = m.officeHrs > 0;
+  return `<td class="stat sep">${hasHrs ? fmtHrs1(m.officeHrs) : '—'}</td>
+    <td class="stat">${m.availableHrs ? fmtHrs1(m.availableHrs) : '—'}</td>
+    <td class="stat">${hasHrs && m.pctHrs != null ? pct(m.pctHrs) + '%' : '—'}</td>
+    <td class="stat">${m.availableHrs ? fmtHrs1(m.reqHrs) : '—'}</td>
+    ${gapCell(m.gapHrs, hasHrs ? m.availableHrs : 0, fmtHrs1)}
+    <td class="stat">${m.avgHrsPerOfficeDay == null ? '—' : fmtHrs1(m.avgHrsPerOfficeDay)}</td>`;
+}
+
 function renderGrid() {
   const months = S.summary.months;
-  let head = `<thead><tr><th class="mth">Month</th>`;
+
+  // Two header rows: group labels over the stat blocks, then the column names.
+  let head = `<thead><tr class="grouphead"><th class="mth"></th><th colspan="31"></th>` +
+    `<th class="grp" colspan="${DAY_COLS.length}">Days</th>` +
+    `<th class="grp sep" colspan="${HOUR_COLS.length}">Hours</th></tr><tr><th class="mth">Month</th>`;
   for (let d = 1; d <= 31; d++) head += `<th class="num">${d}</th>`;
-  head += `<th class="stat">Work</th><th class="stat">Office</th><th class="stat">%</th><th class="stat">Req</th><th class="stat">Gap</th><th class="stat">Hrs</th></tr></thead>`;
+  head += DAY_COLS.map((c) => `<th class="stat">${c}</th>`).join('');
+  head += HOUR_COLS.map((c, i) => `<th class="stat${i === 0 ? ' sep' : ''}">${c}</th>`).join('');
+  head += `</tr></thead>`;
 
   let body = '<tbody>';
   for (const m of months) {
@@ -200,19 +237,11 @@ function renderGrid() {
         title="${esc(`${DOW_S[dowOf(date)]} ${date}${def ? ' · ' + def.label : ''}${hasTime ? ` · ${rec.in}–${rec.out}` : ''}${rec?.comment ? ' · ' + rec.comment : ''}`)}"
         >${rec ? rec.code : ''}${hasTime ? '<span class="mark"></span>' : ''}${rec?.comment ? '<span class="cmt"></span>' : ''}</button></td>`;
     }
-    const gapCls = m.workDays === 0 ? '' : (m.gapDays <= 0 ? 'gap-ok' : 'gap-short');
-    body += `<td class="stat">${m.workDays || '—'}</td><td class="stat">${m.officeDays || '—'}</td>
-      <td class="stat">${m.pctDays == null ? '—' : pct(m.pctDays) + '%'}</td>
-      <td class="stat">${m.workDays ? fmtNum(m.reqDays) : '—'}</td>
-      <td class="stat"><span class="${gapCls}">${m.workDays ? (m.gapDays > 0 ? '+' : '') + fmtNum(m.gapDays) : '—'}</span></td>
-      <td class="stat">${m.officeHrs ? fmtHrs(m.officeHrs) : '—'}</td></tr>`;
+    body += dayStatCells(m) + hourStatCells(m) + `</tr>`;
   }
   const t = S.summary.total;
-  body += `<tr class="totals"><td class="mth">FY${S.fy}</td><td class="cell" colspan="31"></td>
-    <td class="stat">${t.workDays}</td><td class="stat">${t.officeDays}</td>
-    <td class="stat">${pct(t.pctDays)}%</td><td class="stat">${fmtNum(t.reqDays)}</td>
-    <td class="stat"><span class="${t.gapDays <= 0 ? 'gap-ok' : 'gap-short'}">${(t.gapDays > 0 ? '+' : '') + fmtNum(t.gapDays)}</span></td>
-    <td class="stat">${fmtHrs(t.officeHrs)}</td></tr></tbody>`;
+  body += `<tr class="totals"><td class="mth">FY${S.fy}</td><td class="cell" colspan="31"></td>` +
+    dayStatCells(t) + hourStatCells(t) + `</tr></tbody>`;
 
   $('cal').innerHTML = head + body;
   $('cal').querySelectorAll('button[data-date]').forEach((b) => {

@@ -47,8 +47,17 @@ const fyBounds = (fy) => {
 const validDate = (s) => typeof s === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(s);
 const validTime = (s) => s == null || s === '' || /^([01]\d|2[0-3]):[0-5]\d$/.test(s);
 
-function sanitiseRec(rec) {
-  if (rec == null || rec.code == null || rec.code === '') return null;
+/**
+ * Weekends are a fact of the calendar, not something you log, so clearing one
+ * restores it to W rather than blanking it. Only weekdays clear to empty.
+ */
+function clearedValue(date) {
+  const wd = weekdayOf(date);
+  return (wd === 0 || wd === 6) ? { code: 'W', in: null, out: null, comment: null } : null;
+}
+
+function sanitiseRec(rec, date) {
+  if (rec == null || rec.code == null || rec.code === '') return clearedValue(date);
   const code = String(rec.code).toUpperCase();
   if (!VALID.has(code)) throw new Error(`unknown code: ${code}`);
   if (!validTime(rec.in) || !validTime(rec.out)) throw new Error('times must be HH:MM');
@@ -156,7 +165,7 @@ const server = createServer(async (req, res) => {
       const clean = [];
       for (const [date, rec] of entries) {
         if (!validDate(date)) return json(res, 400, { error: `bad date: ${date}` });
-        clean.push([date, sanitiseRec(rec)]);
+        clean.push([date, sanitiseRec(rec, date)]);
       }
       db.exec('BEGIN');
       try {
@@ -205,7 +214,7 @@ const server = createServer(async (req, res) => {
       const clean = [];
       for (const [date, rec] of Object.entries(days)) {
         if (!validDate(date)) continue;
-        clean.push([date, sanitiseRec(rec)]);
+        clean.push([date, sanitiseRec(rec, date)]);
       }
       db.exec('BEGIN');
       try {
