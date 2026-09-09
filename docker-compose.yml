@@ -1,0 +1,22 @@
+services:
+  attendance:
+    build: .
+    # Or, if you'd rather not build on the host, drop `build` and use a prebuilt image.
+    container_name: attendance
+    restart: unless-stopped
+    ports:
+      - "8095:8080"          # http://<host>:8095 — change the left side if 8095 is taken
+    environment:
+      TZ: Australia/Melbourne
+      TZ_NAME: Australia/Melbourne   # used for "today" in the app
+      DB_FILE: /data/attendance.db
+    volumes:
+      - attendance-data:/data        # SQLite lives here; back this up
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/api/health"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+
+volumes:
+  attendance-data:

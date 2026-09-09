@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="en-AU">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#f4f3f0">
+<title>Office Attendance</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='7' fill='%232a78d6'/><rect x='8' y='7' width='7' height='18' rx='1.5' fill='white'/><rect x='17' y='12' width='7' height='13' rx='1.5' fill='white' opacity='.6'/></svg>">
+<link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+<header class="top">
+  <div class="top-in">
+    <div class="brand">
+      <h1>Office Attendance</h1>
+      <span class="sub" id="fyrange"></span>
+    </div>
+    <label class="sr" for="fysel">Financial year</label>
+    <select class="ghost" id="fysel"></select>
+    <button class="ghost" id="settingsBtn">Settings</button>
+    <button class="ghost" id="themeBtn" title="Toggle theme" aria-label="Toggle theme">&#9686;</button>
+  </div>
+</header>
+
+<div class="wrap">
+  <section class="card" id="logCard">
+    <div class="card-head">
+      <h2>Log a day</h2>
+      <div class="spacer"></div>
+      <span class="saved" id="savedFlag">Saved</span>
+      <span class="err" id="errFlag"></span>
+    </div>
+    <div class="logrow">
+      <div class="logcol when">
+        <div class="daynav">
+          <button class="ghost" id="prevDay" aria-label="Previous day">&lsaquo;</button>
+          <input type="date" id="dateInput">
+          <button class="ghost" id="nextDay" aria-label="Next day">&rsaquo;</button>
+          <button class="ghost" id="todayBtn">Today</button>
+        </div>
+        <div class="dayline" id="dayline"></div>
+        <div class="rangenote" id="rangenote" hidden></div>
+      </div>
+
+      <div class="logcol what">
+        <div id="chipzone"></div>
+      </div>
+
+      <div class="logcol hours">
+        <div class="times">
+          <div class="field"><label for="inTime">In</label><input type="time" id="inTime" step="300"></div>
+          <div class="field"><label for="outTime">Out</label><input type="time" id="outTime" step="300"></div>
+        </div>
+        <div class="timeacts">
+          <button class="tiny" id="stdTimes">Standard day</button>
+          <button class="tiny" id="nowIn">In now</button>
+          <button class="tiny" id="nowOut">Out now</button>
+          <button class="tiny" id="clearTimes">Clear</button>
+          <span class="hrs" id="hrsOut"></span>
+        </div>
+        <div class="field" style="margin-top:12px">
+          <label for="comment">Comment</label>
+          <input type="text" id="comment" placeholder="e.g. reason for WFH &ndash; Dr appt" maxlength="200">
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="card" id="tilesCard" style="margin-top:18px">
+    <div class="card-head">
+      <h2 id="tilesTitle">Year to date</h2>
+      <div class="spacer"></div>
+      <div class="seg" role="group" aria-label="Period">
+        <button id="periodYtd" aria-pressed="true">Year to date</button>
+        <button id="periodFull" aria-pressed="false">Full year</button>
+      </div>
+    </div>
+    <div class="tiles" id="tiles"></div>
+  </section>
+
+  <section class="card" id="gridCard" style="margin-top:18px">
+    <div class="card-head">
+      <h2>FY<span id="fyLabel"></span> grid</h2>
+      <span class="note" id="gridHint">Click a day to edit &middot; Shift-click to select a range</span>
+    </div>
+    <div class="gridscroll"><table class="cal" id="cal"></table></div>
+    <div class="keytotals" id="keytotals"></div>
+    <div class="legend" id="legend"></div>
+  </section>
+</div>
+
+<dialog id="settingsDlg">
+  <div class="card-head"><h2>Settings</h2><div class="spacer"></div><button class="ghost" id="closeSettings">Close</button></div>
+  <div class="dlg-body">
+    <div class="row2">
+      <div class="field"><label for="setStd">Standard day (hours)</label><input type="number" id="setStd" step="0.25" min="0" max="24"></div>
+      <div class="field"><label for="setReq">Office requirement (%)</label><input type="number" id="setReq" step="1" min="0" max="100"></div>
+    </div>
+    <div class="row2">
+      <div class="field"><label for="setNw">Non-working weekday</label>
+        <select id="setNw">
+          <option value="-1">None (5-day week)</option>
+          <option value="1">Monday</option><option value="2">Tuesday</option><option value="3">Wednesday</option>
+          <option value="4">Thursday</option><option value="5">Friday</option>
+        </select>
+      </div>
+      <div class="field"><label for="setFy">Default FY</label><input type="number" id="setFy" step="1" min="20" max="99"></div>
+    </div>
+    <div class="row2">
+      <div class="field"><label for="setIn">Default in</label><input type="time" id="setIn" step="300"></div>
+      <div class="field"><label for="setOut">Default out</label><input type="time" id="setOut" step="300"></div>
+    </div>
+    <div class="actions">
+      <button class="primary" id="saveSettings">Save settings</button>
+      <button class="ghost" id="fillSkeleton">Fill weekends &amp; non-working days</button>
+    </div>
+    <hr>
+    <div class="actions">
+      <a class="ghost linkbtn" id="csvLink" download>Export CSV</a>
+      <a class="ghost linkbtn" href="/api/export.json" download>Backup JSON</a>
+      <button class="ghost" id="importBtn">Restore backup&hellip;</button>
+      <input type="file" id="importFile" accept="application/json" hidden>
+    </div>
+    <p class="note">Work days for the requirement = Office + Home; working sick is counted in the key totals under the grid, not in the percentage. Office hours count only on Office days. Data lives in <code>data/attendance.db</code>.</p>
+  </div>
+</dialog>
+
+<script src="/app.js" type="module"></script>
+</body>
+</html>
