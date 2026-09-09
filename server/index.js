@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { openDb, getSettings, setSettings, getDays, upsertDay, seedIfEmpty, DEFAULT_SETTINGS } from './db.js';
 import { buildSummary, fyMonths, daysInMonth, iso, weekdayOf, fyOfDate, MONTH_NAMES } from './calc.js';
 import { CODES, VALID } from './codes.js';
+import { holidaysBetween, unconfirmedHolidayYears } from './holidays.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const PUBLIC = join(HERE, '..', 'public');
@@ -44,6 +45,18 @@ const fyBounds = (fy) => {
   return [iso(ms[0].year, ms[0].month, 1), iso(last.year, last.month, daysInMonth(last.year, last.month))];
 };
 
+/**
+ * Financial years to offer in the picker: everything with data, the default,
+ * the one containing today, and always one year ahead so a new FY can be
+ * opened (and so laid down) before it starts.
+ */
+function availableFys(settings, today, current) {
+  const stored = db.prepare('SELECT DISTINCT date FROM days ORDER BY date').all().map((r) => fyOfDate(r.date));
+  const set = new Set([...stored, settings.fy, fyOfDate(today), current]);
+  set.add(Math.max(...set) + 1);
+  return [...set].sort((a, b) => a - b);
+}
+
 const validDate = (s) => typeof s === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(s);
 const validTime = (s) => s == null || s === '' || /^([01]\d|2[0-3]):[0-5]\d$/.test(s);
 
@@ -69,27 +82,62 @@ function sanitiseRec(rec, date) {
   };
 }
 
-/** Weekend / non-working-day skeleton for a financial year. */
+/**
+ * The code a date gets from the calendar alone, before anything is logged.
+ * Precedence is weekend > public holiday > non-working day, which is how the
+ * original spreadsheet treats them (a Monday public holiday reads PH, not NW).
+ */
+function skeletonCode(date, settings, holidays) {
+  const wd = weekdayOf(date);
+  if (wd === 0 || wd === 6) return 'W';
+  if (holidays[date]) return 'PH';
+  if (settings.nonWorkingWeekday >= 0 && wd === settings.nonWorkingWeekday) return 'NW';
+  return null;
+}
+
+/** Weekend / public-holiday / non-working-day skeleton for a financial year. */
 function calendarSkeleton(fy, settings, overwrite) {
   const [from, to] = fyBounds(fy);
   const existing = getDays(db, from, to);
+  const holidays = holidaysBetween(from, to);
   let n = 0;
-  for (const { year, month } of fyMonths(fy)) {
-    for (let d = 1; d <= daysInMonth(year, month); d++) {
-      const date = iso(year, month, d);
-      const wd = weekdayOf(date);
-      let code = null;
-      if (wd === 0 || wd === 6) code = 'W';
-      else if (settings.nonWorkingWeekday >= 0 && wd === settings.nonWorkingWeekday) code = 'NW';
-      if (!code) continue;
-      const prev = existing[date];
-      if (prev && !overwrite) continue;
-      if (prev && prev.code === code) continue;
-      upsertDay(db, date, { code, in: null, out: null, comment: prev?.comment || null });
-      n++;
+  db.exec('BEGIN');
+  try {
+    for (const { year, month } of fyMonths(fy)) {
+      for (let d = 1; d <= daysInMonth(year, month); d++) {
+        const date = iso(year, month, d);
+        const code = skeletonCode(date, settings, holidays);
+        if (!code) continue;
+        const prev = existing[date];
+        if (prev && !overwrite) continue;
+        if (prev && prev.code === code) continue;
+        upsertDay(db, date, {
+          code,
+          in: null,
+          out: null,
+          comment: prev?.comment || (holidays[date] && code === 'PH' ? holidays[date].name : null),
+        });
+        n++;
+      }
     }
-  }
+    db.exec('COMMIT');
+  } catch (e) { db.exec('ROLLBACK'); throw e; }
   return n;
+}
+
+/**
+ * A financial year opened for the first time gets its calendar laid down
+ * automatically, so FY28 arrives with weekends and public holidays already in
+ * place. Recorded in meta so a year emptied on purpose is never refilled.
+ */
+function autofillIfNew(fy, settings) {
+  const key = `autofilled:${fy}`;
+  if (db.prepare('SELECT value FROM meta WHERE key = ?').get(key)) return 0;
+  const [from, to] = fyBounds(fy);
+  const existing = getDays(db, from, to);
+  db.prepare('INSERT INTO meta (key, value) VALUES (?, ?)').run(key, new Date().toISOString());
+  if (Object.keys(existing).length) return 0;      // already has data; leave it alone
+  return calendarSkeleton(fy, settings, false);
 }
 
 function csvFor(fy) {
@@ -141,6 +189,7 @@ const server = createServer(async (req, res) => {
       const settings = getSettings(db);
       const fy = Number(url.searchParams.get('fy')) || settings.fy;
       const [from, to] = fyBounds(fy);
+      const autofilled = autofillIfNew(fy, settings);
       const days = getDays(db, from, to);
       const today = todayStr();
       return json(res, 200, {
@@ -151,10 +200,9 @@ const server = createServer(async (req, res) => {
         codes: CODES,
         days,
         summary: buildSummary(fy, days, settings, today),
-        availableFys: db.prepare('SELECT DISTINCT date FROM days ORDER BY date').all()
-          .map((r) => fyOfDate(r.date))
-          .filter((v, i, a) => a.indexOf(v) === i)
-          .sort((a, b) => a - b),
+        autofilled,
+        unconfirmedHolidayYears: unconfirmedHolidayYears(from, to),
+        availableFys: availableFys(settings, today, fy),
       });
     }
 

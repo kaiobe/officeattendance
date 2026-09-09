@@ -55,9 +55,39 @@ log panel. **Shift-click** a second cell to select a range, then tap a code to a
 all of them — that's how you block out a fortnight of long service leave in two clicks.
 A dot in the corner of a cell means hours are recorded; a small triangle means there's a comment.
 
-**Fill weekends & non-working days** (Settings) stamps `W` on every Saturday and Sunday and
-`NW` on your non-working weekday across the year, without touching days you've already coded.
-Run it once when you start a new financial year.
+## The calendar fills itself
+
+Open a financial year for the first time and it arrives already laid out: `W` on every
+Saturday and Sunday, `PH` on every Victorian public holiday, and `NW` on your non-working
+weekday. Only weekdays you actually work are left blank. That happens once per year, and
+never touches a year that already has data in it — so switching to FY28 gives you a ready
+calendar without you doing anything.
+
+Precedence is **weekend → public holiday → non-working day**, matching the original
+spreadsheet: a public holiday that lands on your non-working Monday reads `PH`, and one
+that lands on a weekend stays `W`.
+
+Weekends are sticky. Clearing a Saturday puts `W` back rather than blanking it, so you
+can wipe a range of days without losing the shape of the calendar. Only weekdays clear
+to empty.
+
+**Fill weekends, public holidays & non-working days** (Settings) runs the same pass by
+hand — useful after changing your non-working weekday. It never overwrites a day you've
+already coded.
+
+### Public holidays
+
+Victorian public holidays are computed from the rules that define them (second Monday in
+March, first Tuesday in November, Easter, and the weekend substitution rules), so they're
+correct for any year without a lookup table to maintain. Verified against Business
+Victoria's published listings for 2025 through 2028, and against the nine public holidays
+in the original FY27 spreadsheet — which they reproduce exactly.
+
+The exception is **AFL Grand Final Friday**. Victoria sets it each year once the AFL
+releases its schedule, so it can't be derived. Confirmed dates live in
+`AFL_GRAND_FINAL_FRIDAY` in `server/holidays.js` (2025 and 2026 so far). Any year without
+one shows a note under the grid instead of a guessed date — add the year and date to that
+object when it's announced, or just code the day `PH` by hand.
 
 ---
 

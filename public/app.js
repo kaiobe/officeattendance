@@ -55,6 +55,7 @@ async function load(fy) {
   S.codeMap = Object.fromEntries(data.codes.map((c) => [c.code, c]));
   S.days = data.days;
   S.summary = data.summary;
+  S.unconfirmed = data.unconfirmedHolidayYears || [];
   S.fys = [...new Set([...data.availableFys, data.settings.fy, fyOf(data.today)])].sort((a, b) => a - b);
   if (!S.sel || fyOf(S.sel) !== S.fy) {
     S.sel = fyOf(S.today) === S.fy ? S.today : fyStart(S.fy);
@@ -66,6 +67,7 @@ async function load(fy) {
 async function refresh() {
   const data = await api(`/api/state?fy=${S.fy}`);
   S.days = data.days; S.summary = data.summary; S.settings = data.settings;
+  S.unconfirmed = data.unconfirmedHolidayYears || [];
   renderAll();
 }
 
@@ -268,13 +270,25 @@ function renderKeyTotals() {
       <span class="f">O + H${t.workingSickDays ? ` · excludes ${t.workingSickDays} working sick` : ''}</span></span>`;
 }
 
+// Victoria sets the Friday before the AFL Grand Final each year once the AFL
+// releases its schedule, so future years genuinely have no date yet.
+function renderGridNote() {
+  const el = $('gridnote');
+  const years = S.unconfirmed || [];
+  if (!years.length) { el.hidden = true; return; }
+  el.hidden = false;
+  el.innerHTML = `<span>⚠</span><span>AFL Grand Final Friday ${years.length > 1 ? 'dates' : 'date'} for
+    ${years.join(' and ')} ${years.length > 1 ? 'have' : 'has'} not been announced by the Victorian Government yet,
+    so ${years.length > 1 ? 'those days are' : 'that day is'} not marked as a public holiday. Add it by hand once it's confirmed.</span>`;
+}
+
 function renderAll() {
   $('fyLabel').textContent = S.fy;
   $('fyrange').textContent = `FY${S.fy} · Oct ${2000 + S.fy - 1} – Sep ${2000 + S.fy}`;
   const sel = $('fysel');
   sel.innerHTML = S.fys.map((f) => `<option value="${f}" ${f === S.fy ? 'selected' : ''}>FY${f}</option>`).join('');
   $('csvLink').href = `/api/export.csv?fy=${S.fy}`;
-  renderTiles(); renderLog(); renderGrid(); renderKeyTotals(); renderLegend();
+  renderTiles(); renderLog(); renderGrid(); renderKeyTotals(); renderGridNote(); renderLegend();
 }
 
 /* ---------- interactions ---------- */
