@@ -3,10 +3,20 @@ services:
     build: .
     # Or, if you'd rather not build on the host, drop `build` and use a prebuilt image.
     pull_policy: build          # rebuild the image on redeploy instead of reusing the old one
-    container_name: attendance
+
+    # Both of these must be unique per stack, so they're parameters. The defaults
+    # are the production values, so an unmodified deploy behaves exactly as before.
+    # To run a second copy (a test stack), set these in Portainer's environment
+    # variables when deploying:
+    #     APP_NAME=attendance_test
+    #     HOST_PORT=8096
+    # Each stack gets its own database - named volumes are prefixed with the
+    # stack name, so the test copy can't touch your real attendance data.
+    container_name: ${APP_NAME:-attendance}
     restart: unless-stopped
     ports:
-      - "8095:8080"          # direct LAN access; safe to remove once it's behind the proxy
+      - "${HOST_PORT:-8095}:8080"    # direct LAN access; safe to remove once it's behind the proxy
+
     environment:
       TZ: Australia/Melbourne
       TZ_NAME: Australia/Melbourne   # used for "today" in the app
@@ -28,7 +38,7 @@ networks:
   # Created and owned by the Nginx Proxy Manager stack, so join it rather than
   # declaring it here - without `external: true` Compose tries to own it too and
   # the proxy ends up on a different network, which reads as 502 Bad Gateway.
-  # In the proxy host, forward to hostname `attendance` on port 8080.
+  # In the proxy host, forward to the container name above on port 8080.
   nginxproxymanager:
     external: true
     name: nginxproxymanager

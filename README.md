@@ -22,6 +22,21 @@ docker compose up -d --build
 docker compose logs -f attendance      # "Seeded 365 days from the FY27 spreadsheet."
 ```
 
+### A second copy for testing
+
+`container_name` and the published port are the only things two stacks can't share,
+so both are parameters with the production values as defaults. Deploy a second stack
+from the same repo and set two environment variables in Portainer:
+
+```
+APP_NAME=attendance_test
+HOST_PORT=8096
+```
+
+Named volumes are prefixed with the stack name, so the test copy gets its own empty
+database and can't touch your real attendance data. If you proxy it, add a separate
+proxy host forwarding to `attendance_test` on port 8080.
+
 ### Without Docker
 
 Node 24+ (on Node 22 use `./run-dev.sh`, which adds the flag Node 24 has as standard):
