@@ -4,7 +4,7 @@ const DOW_S = ['Su','Mo','Tu','We','Th','Fr','Sa'];
 
 const S = {
   fy: null, today: '', settings: {}, codes: [], codeMap: {}, days: {},
-  summary: null, sel: null, anchor: null, range: [], period: 'ytd', saving: false,
+  summary: null, sel: null, anchor: null, range: [], period: 'ytd', monthIdx: null, saving: false,
 };
 
 /* ---------- date helpers (string based, no timezone drift) ---------- */
@@ -61,6 +61,7 @@ async function load(fy) {
     S.sel = fyOf(S.today) === S.fy ? S.today : fyStart(S.fy);
     S.anchor = S.sel; S.range = [];
   }
+  S.monthIdx = null;
   renderAll();
 }
 
@@ -87,8 +88,28 @@ function meter(value, target, cls) {
     <div class="metercap"><span>0%</span><span>Target ${(target * 100).toFixed(0)}%</span><span>100%</span></div>`;
 }
 
+/** The month the banner defaults to: the current one, else the last with any data. */
+function defaultMonthIdx() {
+  const ms = S.summary.months;
+  if (S.todayInFy) {
+    const i = ms.findIndex((m) => `${m.year}-${pad(m.month)}` === S.today.slice(0, 7));
+    if (i >= 0) return i;
+  }
+  for (let i = ms.length - 1; i >= 0; i--) if (ms[i].workDays > 0) return i;
+  return 0;
+}
+
+/** Figures behind the banner for the selected period. */
+function periodStats() {
+  if (S.period === 'month') {
+    if (S.monthIdx == null) S.monthIdx = defaultMonthIdx();
+    return S.summary.months[S.monthIdx];
+  }
+  return S.summary[S.period === 'ytd' ? 'ytd' : 'total'];
+}
+
 function renderTiles() {
-  const s = S.summary[S.period === 'ytd' ? 'ytd' : 'total'];
+  const s = periodStats();
   const req = S.settings.officeReqPct;
   const empty = s.workDays === 0;
   const dStat = empty ? 'idle' : statusOf(s.pctDays, req);
@@ -133,12 +154,25 @@ function renderTiles() {
       <div class="sub">${s.timedOfficeDays} day${s.timedOfficeDays === 1 ? '' : 's'} with times${s.untimedOfficeDays ? ` · ${s.untimedOfficeDays} untimed` : ''}</div>
     </div>`;
 
-  $('tilesTitle').textContent = S.period === 'ytd' ? `Year to date · to ${longDate(S.today)}` : `Full FY${S.fy}`;
+  const m = S.period === 'month' ? S.summary.months[S.monthIdx] : null;
+  $('tilesTitle').textContent = S.period === 'ytd' ? `Year to date · to ${longDate(S.today)}`
+    : S.period === 'month' ? `${m.name} ${m.year}`
+    : `Full FY${S.fy}`;
+
   const ytdBtn = $('periodYtd');
   ytdBtn.disabled = !S.todayInFy;
   ytdBtn.title = S.todayInFy ? '' : `Today is outside FY${S.fy}`;
   ytdBtn.setAttribute('aria-pressed', String(S.period === 'ytd'));
-  $('periodFull').setAttribute('aria-pressed', String(S.period !== 'ytd'));
+  $('periodFull').setAttribute('aria-pressed', String(S.period === 'full'));
+  $('periodMonth').setAttribute('aria-pressed', String(S.period === 'month'));
+
+  const sel = $('monthSel');
+  sel.hidden = S.period !== 'month';
+  if (!sel.hidden) {
+    sel.innerHTML = S.summary.months
+      .map((mo, i) => `<option value="${i}" ${i === S.monthIdx ? 'selected' : ''}>${mo.name} ${mo.year}</option>`)
+      .join('');
+  }
 }
 
 /* ---------- log card ---------- */
@@ -190,15 +224,14 @@ function gapCell(gap, basis, fmt = fmtNum) {
 }
 
 // Short names: the Days / Hours group headers above them supply the context.
-const DAY_COLS  = ['Work', 'Office', 'D%', 'Req', 'Gap'];
-const HOUR_COLS = ['Office', 'Avail', 'H%', 'Req', 'Gap', 'Avg/day'];
+const DAY_COLS  = ['Work', 'Office', 'D%', 'Req'];
+const HOUR_COLS = ['Office', 'Avail', 'H%', 'Req', 'Gap', 'Avg'];
 
 function dayStatCells(m) {
   return `<td class="stat">${m.workDays || '—'}</td>
     <td class="stat">${m.officeDays || '—'}</td>
     <td class="stat">${m.pctDays == null ? '—' : pct(m.pctDays) + '%'}</td>
-    <td class="stat">${m.workDays ? fmtNum(m.reqDays) : '—'}</td>
-    ${gapCell(m.gapDays, m.workDays)}`;
+    <td class="stat endgroup">${m.workDays ? fmtNum(m.reqDays) : '—'}</td>`;
 }
 
 function hourStatCells(m) {
@@ -216,10 +249,10 @@ function renderGrid() {
 
   // Two header rows: group labels over the stat blocks, then the column names.
   let head = `<thead><tr class="grouphead"><th class="mth"></th><th colspan="31"></th>` +
-    `<th class="grp" colspan="${DAY_COLS.length}">Days</th>` +
+    `<th class="grp endgroup" colspan="${DAY_COLS.length}">Days</th>` +
     `<th class="grp sep" colspan="${HOUR_COLS.length}">Hours</th></tr><tr><th class="mth">Month</th>`;
   for (let d = 1; d <= 31; d++) head += `<th class="num">${d}</th>`;
-  head += DAY_COLS.map((c) => `<th class="stat">${c}</th>`).join('');
+  head += DAY_COLS.map((c, i) => `<th class="stat${i === DAY_COLS.length - 1 ? ' endgroup' : ''}">${c}</th>`).join('');
   head += HOUR_COLS.map((c, i) => `<th class="stat${i === 0 ? ' sep' : ''}">${c}</th>`).join('');
   head += `</tr></thead>`;
 
@@ -362,6 +395,8 @@ $('clearTimes').onclick = () => { $('inTime').value = ''; $('outTime').value = '
 
 $('periodYtd').onclick = () => { if (!S.todayInFy) return; S.period = 'ytd'; renderTiles(); };
 $('periodFull').onclick = () => { S.period = 'full'; renderTiles(); };
+$('periodMonth').onclick = () => { S.period = 'month'; renderTiles(); };
+$('monthSel').onchange = (e) => { S.monthIdx = Number(e.target.value); renderTiles(); };
 
 const themeBtn = $('themeBtn');
 const applyTheme = (t) => { if (t) document.documentElement.dataset.theme = t; else delete document.documentElement.dataset.theme; };
