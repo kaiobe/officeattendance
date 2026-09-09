@@ -117,10 +117,36 @@ select.ghost { padding-right: 8px; }
 .card-body { padding: 18px; }
 
 .logrow { display: grid; grid-template-columns: minmax(268px, 300px) minmax(0, 1fr) minmax(250px, 290px); gap: 22px; padding: 18px; align-items: start; }
-@media (max-width: 940px) { .logrow { grid-template-columns: 1fr; gap: 16px; } }
 .logcol.what { border-left: 1px solid var(--border); border-right: 1px solid var(--border); padding: 0 22px; min-height: 100%; }
-@media (max-width: 940px) { .logcol.what { border: 0; border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); padding: 14px 0; } }
 .logcol.what .chipgroup:first-child { margin-top: 0; }
+.punch { font-weight: 560; }
+
+.dayline .dl-short { display: none; }   /* the phone form, switched on below */
+
+/*
+ * On a phone the app is mostly used to punch in and out, so the clock comes
+ * before the codes: date, then times, then the code chips underneath.
+ */
+@media (max-width: 940px) {
+  .logrow { grid-template-columns: 1fr; gap: 14px; }
+  .logcol.when  { order: 0; }
+  .logcol.hours { order: 1; }
+  .logcol.what  { order: 2; border: 0; border-top: 1px solid var(--border); padding: 14px 0 0; }
+  .logcol.hours .times { margin-top: 0; }
+  .logcol.hours .timeacts { gap: 8px; }
+  /* the two punch buttons take a full row of their own, side by side */
+  .logcol.hours .punch {
+    order: -1; flex: 1 1 calc(50% - 4px); min-height: 46px; font-size: 15px; font-weight: 620;
+    background: var(--accent); border-color: var(--accent); color: #fff;
+  }
+  .logcol.hours .tiny:not(.punch) { flex: 1 1 auto; min-height: 36px; }
+  .logcol.hours .punch:hover { background: var(--accent); filter: brightness(1.06); color: #fff; }
+  .logcol.hours .times input { font-size: 16px; padding: 10px 9px; }   /* 16px stops iOS zooming on focus */
+  .logcol.hours .timeacts .hrs { flex-basis: 100%; margin-left: 0; text-align: right; }
+  .dayline { font-size: 19px; margin: 10px 0 2px; }
+  .dayline .dl-long { display: none; }
+  .dayline .dl-short { display: inline; }
+}
 @media (max-width: 900px) { .grid-2 { grid-template-columns: 1fr; } }
 
 /* ---------- quick log ---------- */

@@ -186,7 +186,9 @@ const server = createServer(async (req, res) => {
 
     if (p === '/api/state' && req.method === 'GET') {
       const settings = getSettings(db);
-      const fy = Number(url.searchParams.get('fy')) || settings.fy;
+      // Default to the financial year containing today - that's the one you
+      // want open when you punch in of a morning.
+      const fy = Number(url.searchParams.get('fy')) || fyOfDate(todayStr());
       const [from, to] = fyBounds(fy);
       const autofilled = autofillIfNew(fy, settings);
       const days = getDays(db, from, to);

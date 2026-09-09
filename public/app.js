@@ -17,6 +17,7 @@ const fyOf = (s) => { const [y,m] = parse(s); return (m >= 10 ? y + 1 : y) - 200
 const fyStart = (fy) => `${2000 + fy - 1}-10-01`;
 const fyEnd = (fy) => `${2000 + fy}-09-30`;
 const longDate = (s) => { const [y,m,d] = parse(s); return `${d} ${['January','February','March','April','May','June','July','August','September','October','November','December'][m-1]} ${y}`; };
+const shortDate = (s) => { const [y,m,d] = parse(s); return `${d} ${['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][m-1]} ${y}`; };
 const nowHHMM = () => { const d = new Date(); return `${pad(d.getHours())}:${pad(d.getMinutes())}`; };
 const minsBetween = (a, b) => { if (!a || !b) return 0; const [ah,am] = a.split(':').map(Number), [bh,bm] = b.split(':').map(Number); let x = bh*60+bm-(ah*60+am); if (x < 0) x += 1440; return x; };
 const fmtHrs = (h) => (Math.round(h * 100) / 100).toLocaleString('en-AU', { maximumFractionDigits: 2 });
@@ -185,7 +186,10 @@ function renderLog() {
   const date = S.sel;
   const rec = S.days[date] || {};
   $('dateInput').value = date;
-  $('dayline').innerHTML = `<span class="dow">${DOW[dowOf(date)]}</span> ${longDate(date)}`;
+  // Long form on a wide screen, abbreviated on a phone so it stays on one line.
+  $('dayline').innerHTML =
+    `<span class="dl-long"><span class="dow">${DOW[dowOf(date)]}</span> ${longDate(date)}</span>` +
+    `<span class="dl-short"><span class="dow">${DOW[dowOf(date)].slice(0, 3)}</span> ${shortDate(date)}</span>`;
 
   const multi = S.range.length > 1;
   const note = $('rangenote');
@@ -371,6 +375,17 @@ async function saveCurrent() {
   await save({ [S.sel]: { code: rec.code, in: inV, out: outV, comment: cmt } });
 }
 
+/** Save the selected day as an office day, keeping whatever times are entered. */
+async function saveAsOffice() {
+  const wasOffice = S.days[S.sel]?.code === 'O';
+  await save({ [S.sel]: {
+    code: 'O',
+    in: $('inTime').value || null,
+    out: $('outTime').value || null,
+    comment: $('comment').value || null,
+  } }, wasOffice ? null : 'Saved as Office');
+}
+
 async function save(days, msg) {
   try {
     S.saving = true;
@@ -394,8 +409,10 @@ $('inTime').onchange = saveCurrent;
 $('outTime').onchange = saveCurrent;
 $('comment').onchange = saveCurrent;
 $('stdTimes').onclick = () => { $('inTime').value = S.settings.defaultIn; $('outTime').value = S.settings.defaultOut; updateHrs(); saveCurrent(); };
-$('nowIn').onclick = () => { $('inTime').value = nowHHMM(); updateHrs(); saveCurrent(); };
-$('nowOut').onclick = () => { $('outTime').value = nowHHMM(); updateHrs(); saveCurrent(); };
+// Punching in or out is a statement that you were in the office, so it codes
+// the day O whatever it was set to before.
+$('nowIn').onclick = () => { $('inTime').value = nowHHMM(); updateHrs(); saveAsOffice(); };
+$('nowOut').onclick = () => { $('outTime').value = nowHHMM(); updateHrs(); saveAsOffice(); };
 $('clearTimes').onclick = () => { $('inTime').value = ''; $('outTime').value = ''; updateHrs(); saveCurrent(); };
 
 $('periodYtd').onclick = () => { if (!S.todayInFy) return; S.period = 'ytd'; renderTiles(); };
