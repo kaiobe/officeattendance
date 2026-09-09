@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 const HERE = dirname(fileURLToPath(import.meta.url));
 
 export const DEFAULT_SETTINGS = {
-  fy: 27,                 // FY27 = Oct 2026 - Sep 2027
+  lastFy: null,           // newest FY the app manages; null = work it out on first run
   stdDayHours: 10.75,     // 43 hr week over 4 days
   officeReqPct: 0.5,      // 50% office requirement
   nonWorkingWeekday: 1,   // 0=Sun ... 1=Mon. -1 = none (5 day week)

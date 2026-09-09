@@ -45,16 +45,68 @@ const fyBounds = (fy) => {
   return [iso(ms[0].year, ms[0].month, 1), iso(last.year, last.month, daysInMonth(last.year, last.month))];
 };
 
+const SKELETON_CODES = new Set(['W', 'NW', 'PH']);
+
+/** Financial years holding something actually logged, not just a calendar. */
+function loggedFys() {
+  const rows = db.prepare('SELECT date, code, in_time, out_time FROM days').all();
+  const set = new Set();
+  for (const r of rows) {
+    if (!SKELETON_CODES.has(r.code) || r.in_time || r.out_time) set.add(fyOfDate(r.date));
+  }
+  return [...set];
+}
+
 /**
- * Financial years to offer in the picker: everything with data, the default,
- * the one containing today, and always one year ahead so a new FY can be
- * opened (and so laid down) before it starts.
+ * The newest financial year the app manages. Stored, so the list of years
+ * stays put: without it, opening a future year laid its calendar down, which
+ * made that year "have data", which offered another year beyond it, and so on.
+ * Going further forward is a deliberate act - see /api/add-fy.
  */
-function availableFys(settings, today, current) {
+function resolveLastFy(settings, today) {
+  if (Number.isInteger(settings.lastFy)) return settings.lastFy;
+  const value = Math.max(fyOfDate(today) + 1, ...loggedFys(), fyOfDate(today));
+  setSettings(db, { lastFy: value });
+  return value;
+}
+
+/**
+ * Financial years to offer in the picker: earliest with data through lastFy.
+ * A year holding real entries is always reachable even if it somehow sits past
+ * the horizon, so nothing you logged can become invisible.
+ */
+function availableFys(today, lastFy) {
   const stored = db.prepare('SELECT DISTINCT date FROM days ORDER BY date').all().map((r) => fyOfDate(r.date));
-  const set = new Set([...stored, settings.fy, fyOfDate(today), current]);
-  set.add(Math.max(...set) + 1);
-  return [...set].sort((a, b) => a - b);
+  const first = Math.min(fyOfDate(today), ...(stored.length ? stored : [fyOfDate(today)]));
+  const last = Math.max(lastFy, ...loggedFys(), fyOfDate(today));
+  const out = [];
+  for (let fy = first; fy <= last; fy++) out.push(fy);
+  return out;
+}
+
+/**
+ * Remove calendars auto-generated beyond lastFy. Strictly limited to years
+ * holding nothing but weekends, non-working days and public holidays with no
+ * times against them - anything logged is never touched.
+ */
+function tidyFutureYears(lastFy) {
+  const rows = db.prepare('SELECT date, code, in_time, out_time FROM days').all();
+  const byFy = new Map();
+  for (const r of rows) {
+    const fy = fyOfDate(r.date);
+    if (!byFy.has(fy)) byFy.set(fy, []);
+    byFy.get(fy).push(r);
+  }
+  let removed = 0;
+  for (const [fy, rs] of byFy) {
+    if (fy <= lastFy) continue;
+    if (!rs.every((r) => SKELETON_CODES.has(r.code) && !r.in_time && !r.out_time)) continue;
+    const [from, to] = fyBounds(fy);
+    db.prepare('DELETE FROM days WHERE date >= ? AND date <= ?').run(from, to);
+    db.prepare('DELETE FROM meta WHERE key = ?').run(`autofilled:${fy}`);
+    removed += rs.length;
+  }
+  return removed;
 }
 
 const validDate = (s) => typeof s === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(s);
@@ -126,16 +178,30 @@ function calendarSkeleton(fy, settings, overwrite) {
 }
 
 /**
- * A financial year opened for the first time gets its calendar laid down
- * automatically, so FY28 arrives with weekends and public holidays already in
- * place. Recorded in meta so a year emptied on purpose is never refilled.
+ * Has this financial year had its calendar laid down? The test is the calendar
+ * itself - a year missing any of its weekends hasn't been filled - rather than
+ * a stored marker, which could claim "done" for a year that never actually got
+ * filled. Self-healing, and settles once weekends are in place, since those
+ * can only be recoded, never cleared.
  */
-function autofillIfNew(fy, settings) {
-  const key = `autofilled:${fy}`;
-  if (db.prepare('SELECT value FROM meta WHERE key = ?').get(key)) return 0;
-  db.prepare('INSERT INTO meta (key, value) VALUES (?, ?)').run(key, new Date().toISOString());
-  // Fills blank days only, so a year you've already put a few entries in still
-  // gets its weekends and public holidays without any of them being touched.
+function needsCalendar(fy) {
+  const [from, to] = fyBounds(fy);
+  const existing = getDays(db, from, to);
+  for (const { year, month } of fyMonths(fy)) {
+    for (let d = 1; d <= daysInMonth(year, month); d++) {
+      const date = iso(year, month, d);
+      const wd = weekdayOf(date);
+      if ((wd === 0 || wd === 6) && !existing[date]) return true;
+    }
+  }
+  return false;
+}
+
+function autofillIfNeeded(fy, settings, lastFy) {
+  if (fy > lastFy) return 0;              // never lay down a year past the horizon
+  if (!needsCalendar(fy)) return 0;
+  // Fills blank days only, so a year already holding entries still gets its
+  // weekends and public holidays without any of them being touched.
   return calendarSkeleton(fy, settings, false);
 }
 
@@ -178,6 +244,13 @@ async function serveStatic(req, res, pathname) {
   }
 }
 
+// Clear up calendars an earlier build generated past the horizon.
+{
+  const s = getSettings(db);
+  const removed = tidyFutureYears(resolveLastFy(s, todayStr()));
+  if (removed) console.log(`Removed ${removed} auto-generated days from financial years past the horizon.`);
+}
+
 const server = createServer(async (req, res) => {
   const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
   const p = url.pathname;
@@ -186,11 +259,13 @@ const server = createServer(async (req, res) => {
 
     if (p === '/api/state' && req.method === 'GET') {
       const settings = getSettings(db);
+      const today0 = todayStr();
+      const lastFy = resolveLastFy(settings, today0);
       // Default to the financial year containing today - that's the one you
-      // want open when you punch in of a morning.
-      const fy = Number(url.searchParams.get('fy')) || fyOfDate(todayStr());
+      // want open when you punch in of a morning - and never past the horizon.
+      const fy = Math.min(Number(url.searchParams.get('fy')) || fyOfDate(today0), lastFy);
       const [from, to] = fyBounds(fy);
-      const autofilled = autofillIfNew(fy, settings);
+      const autofilled = autofillIfNeeded(fy, settings, lastFy);
       const days = getDays(db, from, to);
       const today = todayStr();
       return json(res, 200, {
@@ -202,8 +277,9 @@ const server = createServer(async (req, res) => {
         days,
         summary: buildSummary(fy, days, settings, today),
         autofilled,
+        lastFy,
         unconfirmedHolidayYears: unconfirmedHolidayYears(from, to),
-        availableFys: availableFys(settings, today, fy),
+        availableFys: availableFys(today, lastFy),
       });
     }
 
@@ -230,16 +306,25 @@ const server = createServer(async (req, res) => {
       for (const k of Object.keys(DEFAULT_SETTINGS)) if (k in body) patch[k] = body[k];
       if ('stdDayHours' in patch) patch.stdDayHours = Math.max(0, Number(patch.stdDayHours) || 0);
       if ('officeReqPct' in patch) patch.officeReqPct = Math.min(1, Math.max(0, Number(patch.officeReqPct) || 0));
-      if ('fy' in patch) patch.fy = Math.round(Number(patch.fy));
+      if ('lastFy' in patch) patch.lastFy = Math.round(Number(patch.lastFy));
       if ('nonWorkingWeekday' in patch) patch.nonWorkingWeekday = Math.round(Number(patch.nonWorkingWeekday));
       if (!validTime(patch.defaultIn) || !validTime(patch.defaultOut)) return json(res, 400, { error: 'times must be HH:MM' });
       return json(res, 200, { settings: setSettings(db, patch) });
     }
 
+    // Extend the horizon by one financial year and lay its calendar down.
+    if (p === '/api/add-fy' && req.method === 'POST') {
+      const settings = getSettings(db);
+      const lastFy = resolveLastFy(settings, todayStr()) + 1;
+      setSettings(db, { lastFy });
+      const filled = calendarSkeleton(lastFy, settings, false);
+      return json(res, 200, { lastFy, filled });
+    }
+
     if (p === '/api/calendar-skeleton' && req.method === 'POST') {
       const body = await readBody(req);
       const settings = getSettings(db);
-      const fy = Number(body.fy) || settings.fy;
+      const fy = Number(body.fy) || fyOfDate(todayStr());
       return json(res, 200, { filled: calendarSkeleton(fy, settings, !!body.overwrite) });
     }
 

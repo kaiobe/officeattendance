@@ -57,7 +57,8 @@ async function load(fy) {
   S.days = data.days;
   S.summary = data.summary;
   S.unconfirmed = data.unconfirmedHolidayYears || [];
-  S.fys = [...new Set([...data.availableFys, data.settings.fy, fyOf(data.today)])].sort((a, b) => a - b);
+  S.lastFy = data.lastFy;
+  S.fys = data.availableFys;
   if (!S.sel || fyOf(S.sel) !== S.fy) {
     S.sel = fyOf(S.today) === S.fy ? S.today : fyStart(S.fy);
     S.anchor = S.sel; S.range = [];
@@ -438,7 +439,7 @@ $('settingsBtn').onclick = () => {
   $('setStd').value = S.settings.stdDayHours;
   $('setReq').value = Math.round(S.settings.officeReqPct * 100);
   $('setNw').value = S.settings.nonWorkingWeekday;
-  $('setFy').value = S.settings.fy;
+  $('addFyLabel').textContent = `Add FY${S.lastFy + 1}`;
   $('setIn').value = S.settings.defaultIn;
   $('setOut').value = S.settings.defaultOut;
   dlg.showModal();
@@ -450,11 +451,16 @@ $('saveSettings').onclick = async () => {
       stdDayHours: Number($('setStd').value),
       officeReqPct: Number($('setReq').value) / 100,
       nonWorkingWeekday: Number($('setNw').value),
-      fy: Number($('setFy').value),
       defaultIn: $('setIn').value, defaultOut: $('setOut').value,
     }) });
     dlg.close(); await refresh(); flash('Settings saved');
   } catch (e) { alert(e.message); }
+};
+$('addFy').onclick = async () => {
+  const r = await api('/api/add-fy', { method: 'POST' });
+  await load(r.lastFy);
+  dlg.close();
+  flash(`FY${r.lastFy} added · ${r.filled} days laid out`);
 };
 $('fillSkeleton').onclick = async () => {
   const r = await api('/api/calendar-skeleton', { method: 'POST', body: JSON.stringify({ fy: S.fy }) });

@@ -24,7 +24,7 @@ docker compose logs -f attendance      # "Seeded 365 days from the FY27 spreadsh
 
 ### Without Docker
 
-Node 24+ (Node 22 works with `node --experimental-sqlite server/index.js`):
+Node 24+ (on Node 22 use `./run-dev.sh`, which adds the flag Node 24 has as standard):
 
 ```bash
 npm start                              # http://localhost:8080
@@ -57,11 +57,30 @@ A dot in the corner of a cell means hours are recorded; a small triangle means t
 
 ## The calendar fills itself
 
-Open a financial year for the first time and it arrives already laid out: `W` on every
-Saturday and Sunday, `PH` on every Victorian public holiday, and `NW` on your non-working
-weekday. Only weekdays you actually work are left blank. That happens once per year, and
-never touches a year that already has data in it — so switching to FY28 gives you a ready
-calendar without you doing anything.
+Open a financial year and it arrives already laid out: `W` on every Saturday and Sunday,
+`PH` on every Victorian public holiday, and `NW` on your non-working weekday. Only the
+weekdays you actually work are left blank. It fills blank days only, so a year already
+holding entries still gets its calendar without any of them being touched.
+
+The check is the calendar itself — a year missing any of its weekends hasn't been filled —
+rather than a stored "done" marker, which can claim a year is finished when it never
+actually got filled. So a year that missed out corrects itself on the next load.
+
+### How far ahead the app goes
+
+The year picker runs from your earliest year with data up to a **horizon**, and stops.
+The horizon starts one year past the current financial year, and browsing never moves it —
+otherwise opening a future year would lay its calendar down, which would make it "have
+data", which would offer another year beyond it, and so on forever.
+
+Going further forward is deliberate: **Settings → Add FY29** (the button names the actual
+next year) moves the horizon on by one and lays that year out. Asking for a year past the
+horizon by URL is clamped rather than created.
+
+On startup the app removes calendars auto-generated beyond the horizon. That's strictly
+limited to years holding nothing but weekends, non-working days and public holidays with
+no times against them — anything you logged is never touched, and a year with real entries
+stays reachable in the picker even if it sits past the horizon.
 
 Precedence is **weekend → public holiday → non-working day**, matching the original
 spreadsheet: a public holiday that lands on your non-working Monday reads `PH`, and one
@@ -166,7 +185,8 @@ docker compose exec -T attendance wget -qO- http://127.0.0.1:8080/api/export.jso
 | `GET` | `/api/state?fy=27` | Days, settings, codes and the full rollup |
 | `PUT` | `/api/days` | `{"days":{"2026-10-01":{"code":"O","in":"07:30","out":"17:00"}}}` — `null` deletes |
 | `PUT` | `/api/settings` | Any of the settings fields |
-| `POST` | `/api/calendar-skeleton` | `{"fy":27}` — fill weekends and non-working days |
+| `POST` | `/api/calendar-skeleton` | `{"fy":27}` — fill weekends, public holidays and non-working days |
+| `POST` | `/api/add-fy` | Move the horizon on one year and lay that year out |
 | `GET` | `/api/export.csv?fy=27` · `/api/export.json` | Exports |
 | `POST` | `/api/import` | Restore a backup |
 | `GET` | `/api/health` | For the healthcheck |
