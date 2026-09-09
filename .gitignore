@@ -1,0 +1,12 @@
+# runtime data - the SQLite database lives here
+data/
+*.db
+*.db-wal
+*.db-shm
+
+node_modules/
+npm-debug.log*
+.DS_Store
+Thumbs.db
+.env
+.env.*

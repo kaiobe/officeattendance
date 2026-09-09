@@ -1,6 +1,7 @@
 services:
   attendance:
     build: .
+    pull_policy: build          # rebuild the image on redeploy instead of reusing the old one
     # Or, if you'd rather not build on the host, drop `build` and use a prebuilt image.
     container_name: attendance
     restart: unless-stopped
