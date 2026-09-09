@@ -1,12 +1,12 @@
 services:
   attendance:
     build: .
-    pull_policy: build          # rebuild the image on redeploy instead of reusing the old one
     # Or, if you'd rather not build on the host, drop `build` and use a prebuilt image.
+    pull_policy: build          # rebuild the image on redeploy instead of reusing the old one
     container_name: attendance
     restart: unless-stopped
     ports:
-      - "8095:8080"          # http://<host>:8095 — change the left side if 8095 is taken
+      - "8095:8080"          # direct LAN access; safe to remove once it's behind the proxy
     environment:
       TZ: Australia/Melbourne
       TZ_NAME: Australia/Melbourne   # used for "today" in the app
@@ -18,6 +18,17 @@ services:
       interval: 30s
       timeout: 3s
       retries: 3
+    networks:
+      - nginxproxymanager
 
 volumes:
   attendance-data:
+
+networks:
+  # Created and owned by the Nginx Proxy Manager stack, so join it rather than
+  # declaring it here - without `external: true` Compose tries to own it too and
+  # the proxy ends up on a different network, which reads as 502 Bad Gateway.
+  # In the proxy host, forward to hostname `attendance` on port 8080.
+  nginxproxymanager:
+    external: true
+    name: nginxproxymanager
