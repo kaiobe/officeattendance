@@ -133,10 +133,9 @@ function calendarSkeleton(fy, settings, overwrite) {
 function autofillIfNew(fy, settings) {
   const key = `autofilled:${fy}`;
   if (db.prepare('SELECT value FROM meta WHERE key = ?').get(key)) return 0;
-  const [from, to] = fyBounds(fy);
-  const existing = getDays(db, from, to);
   db.prepare('INSERT INTO meta (key, value) VALUES (?, ?)').run(key, new Date().toISOString());
-  if (Object.keys(existing).length) return 0;      // already has data; leave it alone
+  // Fills blank days only, so a year you've already put a few entries in still
+  // gets its weekends and public holidays without any of them being touched.
   return calendarSkeleton(fy, settings, false);
 }
 

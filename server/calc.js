@@ -110,10 +110,31 @@ export function buildSummary(fy, days, settings, todayStr) {
   });
   const all = months.flatMap((m) => m.dates);
   const ytdDates = all.filter((d) => d <= todayStr);
+
+  // Month to date. For the financial year containing today that's the current
+  // month up to today; for a year already finished it's that year's last month,
+  // and for one not yet started, its first.
+  const containsToday = todayStr >= all[0] && todayStr <= all[all.length - 1];
+  const idx = containsToday ? months.findIndex((m) => m.dates.includes(todayStr))
+    : todayStr > all[all.length - 1] ? 11
+    : 0;
+  const src = months[idx];
+  const mtdDates = containsToday ? src.dates.filter((d) => d <= todayStr) : src.dates;
+  const mtd = {
+    year: src.year,
+    month: src.month,
+    name: src.name,
+    monthIndex: idx,
+    partial: containsToday,
+    through: mtdDates[mtdDates.length - 1],
+    ...summarise(mtdDates, days, settings),
+  };
+
   return {
     months: months.map(({ dates, ...rest }) => rest),
     total: summarise(all, days, settings),
     ytd: summarise(ytdDates, days, settings),
+    mtd,
     firstDate: all[0],
     lastDate: all[all.length - 1],
   };

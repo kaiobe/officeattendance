@@ -105,6 +105,7 @@ function periodStats() {
     if (S.monthIdx == null) S.monthIdx = defaultMonthIdx();
     return S.summary.months[S.monthIdx];
   }
+  if (S.period === 'mtd') return S.summary.mtd;
   return S.summary[S.period === 'ytd' ? 'ytd' : 'total'];
 }
 
@@ -155,8 +156,10 @@ function renderTiles() {
     </div>`;
 
   const m = S.period === 'month' ? S.summary.months[S.monthIdx] : null;
+  const mtd = S.summary.mtd;
   $('tilesTitle').textContent = S.period === 'ytd' ? `Year to date · to ${longDate(S.today)}`
     : S.period === 'month' ? `${m.name} ${m.year}`
+    : S.period === 'mtd' ? (mtd.partial ? `${mtd.name} ${mtd.year} · to ${longDate(mtd.through)}` : `${mtd.name} ${mtd.year}`)
     : `Full FY${S.fy}`;
 
   const ytdBtn = $('periodYtd');
@@ -164,7 +167,9 @@ function renderTiles() {
   ytdBtn.title = S.todayInFy ? '' : `Today is outside FY${S.fy}`;
   ytdBtn.setAttribute('aria-pressed', String(S.period === 'ytd'));
   $('periodFull').setAttribute('aria-pressed', String(S.period === 'full'));
+  $('periodMtd').setAttribute('aria-pressed', String(S.period === 'mtd'));
   $('periodMonth').setAttribute('aria-pressed', String(S.period === 'month'));
+  $('periodMtd').title = mtd.partial ? '' : `FY${S.fy} doesn't contain today, so this shows ${mtd.name} ${mtd.year}`;
 
   const sel = $('monthSel');
   sel.hidden = S.period !== 'month';
@@ -395,6 +400,7 @@ $('clearTimes').onclick = () => { $('inTime').value = ''; $('outTime').value = '
 
 $('periodYtd').onclick = () => { if (!S.todayInFy) return; S.period = 'ytd'; renderTiles(); };
 $('periodFull').onclick = () => { S.period = 'full'; renderTiles(); };
+$('periodMtd').onclick = () => { S.period = 'mtd'; renderTiles(); };
 $('periodMonth').onclick = () => { S.period = 'month'; renderTiles(); };
 $('monthSel').onchange = (e) => { S.monthIdx = Number(e.target.value); renderTiles(); };
 
