@@ -48,8 +48,8 @@
 
       <div class="logcol hours">
         <div class="times">
-          <div class="field"><label for="inTime">In</label><input type="time" id="inTime" step="300"></div>
-          <div class="field"><label for="outTime">Out</label><input type="time" id="outTime" step="300"></div>
+          <div class="field"><label for="inTime">In</label><input type="time" id="inTime"></div>
+          <div class="field"><label for="outTime">Out</label><input type="time" id="outTime"></div>
         </div>
         <div class="timeacts">
           <button class="tiny" id="stdTimes">Standard day</button>
@@ -114,8 +114,8 @@
       </div>
     </div>
     <div class="row2">
-      <div class="field"><label for="setIn">Default in</label><input type="time" id="setIn" step="300"></div>
-      <div class="field"><label for="setOut">Default out</label><input type="time" id="setOut" step="300"></div>
+      <div class="field"><label for="setIn">Default in</label><input type="time" id="setIn"></div>
+      <div class="field"><label for="setOut">Default out</label><input type="time" id="setOut"></div>
     </div>
     <div class="actions">
       <button class="primary" id="saveSettings">Save settings</button>
@@ -128,7 +128,7 @@
       <button class="ghost" id="importBtn">Restore backup&hellip;</button>
       <input type="file" id="importFile" accept="application/json" hidden>
     </div>
-    <p class="note">Work days for the requirement = Office + Home; working sick is counted in the key totals under the grid, not in the percentage. Office hours count only on Office days. Data lives in <code>data/attendance.db</code>.</p>
+    <p class="note">Build <code id="buildStamp">—</code>. Work days for the requirement = Office + Home; working sick is counted in the key totals under the grid, not in the percentage. Office hours count only on Office days. Data lives in <code>data/attendance.db</code>.</p>
   </div>
 </dialog>
 

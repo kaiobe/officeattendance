@@ -58,6 +58,7 @@ async function load(fy) {
   S.summary = data.summary;
   S.unconfirmed = data.unconfirmedHolidayYears || [];
   S.lastFy = data.lastFy;
+  S.build = data.build;
   S.fys = data.availableFys;
   if (!S.sel || fyOf(S.sel) !== S.fy) {
     S.sel = fyOf(S.today) === S.fy ? S.today : fyStart(S.fy);
@@ -544,6 +545,7 @@ $('settingsBtn').onclick = () => {
   $('setReq').value = Math.round(S.settings.officeReqPct * 100);
   $('setNw').value = S.settings.nonWorkingWeekday;
   $('addFyLabel').textContent = `Add FY${S.lastFy + 1}`;
+  $('buildStamp').textContent = S.build || 'unknown';
   $('setIn').value = S.settings.defaultIn;
   $('setOut').value = S.settings.defaultOut;
   dlg.showModal();

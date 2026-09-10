@@ -1,5 +1,6 @@
 import { createServer } from 'node:http';
 import { readFile, stat } from 'node:fs/promises';
+import { readdirSync, statSync } from 'node:fs';
 import { join, extname, normalize, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { openDb, getSettings, setSettings, getDays, upsertDay, seedIfEmpty, DEFAULT_SETTINGS } from './db.js';
@@ -16,6 +17,20 @@ const TZ = process.env.TZ_NAME || 'Australia/Melbourne';
 const db = openDb(DB_FILE);
 const seeded = seedIfEmpty(db);
 if (seeded) console.log(`Seeded ${seeded} days from the FY27 spreadsheet.`);
+
+/**
+ * A stamp for the running build, from the newest file in public/. Shown in
+ * Settings and returned by /api/health, so "is my deploy actually live?" is a
+ * one-second check rather than guesswork about caches and rebuilds.
+ */
+const BUILD = (() => {
+  try {
+    const newest = readdirSync(PUBLIC)
+      .map((f) => statSync(join(PUBLIC, f)).mtime.getTime())
+      .reduce((a, b) => Math.max(a, b), 0);
+    return new Date(newest).toISOString().slice(0, 16).replace('T', ' ') + ' UTC';
+  } catch { return 'unknown'; }
+})();
 
 const todayStr = () =>
   new Intl.DateTimeFormat('en-CA', { timeZone: TZ, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
@@ -262,7 +277,7 @@ const server = createServer(async (req, res) => {
   const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
   const p = url.pathname;
   try {
-    if (p === '/api/health') return json(res, 200, { ok: true, today: todayStr(), tz: TZ });
+    if (p === '/api/health') return json(res, 200, { ok: true, today: todayStr(), tz: TZ, build: BUILD });
 
     if (p === '/api/state' && req.method === 'GET') {
       const settings = getSettings(db);
@@ -285,6 +300,7 @@ const server = createServer(async (req, res) => {
         summary: buildSummary(fy, days, settings, today),
         autofilled,
         lastFy,
+        build: BUILD,
         unconfirmedHolidayYears: unconfirmedHolidayYears(from, to),
         availableFys: availableFys(today, lastFy),
       });
