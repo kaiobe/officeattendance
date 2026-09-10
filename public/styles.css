@@ -122,6 +122,8 @@ select.ghost { padding-right: 8px; }
 .punch { font-weight: 560; }
 
 .dayline .dl-short { display: none; }   /* the phone form, switched on below */
+.seg .lbl-short { display: none; }
+#tilesTitle .through { }                /* the "to <date>" tail, dropped on a phone */
 
 /*
  * On a phone the app is mostly used to punch in and out, so the clock comes
@@ -146,6 +148,16 @@ select.ghost { padding-right: 8px; }
   .dayline { font-size: 19px; margin: 10px 0 2px; }
   .dayline .dl-long { display: none; }
   .dayline .dl-short { display: inline; }
+
+  /* the period strip gets a row of its own rather than fighting the title */
+  #tilesCard .card-head { flex-wrap: wrap; }
+  #tilesCard .seg { flex: 1 1 100%; }
+  #tilesCard .seg button { flex: 1; padding: 7px 4px; }
+  #tilesCard .spacer { display: none; }
+  .seg .lbl-long { display: none; }
+  .seg .lbl-short { display: inline; }
+  #tilesTitle .through { display: none; }   /* the tab already says "to date" */
+  #monthSel { flex: 1 1 100%; }
 }
 @media (max-width: 900px) { .grid-2 { grid-template-columns: 1fr; } }
 
@@ -195,9 +207,8 @@ select.ghost { padding-right: 8px; }
 .err { font-size: 12px; color: var(--critical); }
 
 /* ---------- stat tiles ---------- */
-.tiles { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 1px; background: var(--border); border-radius: 0 0 var(--radius) var(--radius); overflow: hidden; }
-@media (max-width: 940px) { .tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
-@media (max-width: 520px) { .tiles { grid-template-columns: 1fr; } }
+.tiles { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1px; background: var(--border); border-radius: 0 0 var(--radius) var(--radius); overflow: hidden; }
+@media (max-width: 860px) { .tiles { grid-template-columns: 1fr; } }
 .tile { background: var(--surface-1); padding: 16px 18px 18px; display: flex; flex-direction: column; }
 .tile .label { font-size: 12px; color: var(--text-2); margin-bottom: 6px; }
 .tile .value { font-size: 30px; font-weight: 640; letter-spacing: -.025em; line-height: 1.05; }
@@ -291,6 +302,9 @@ dialog {
 }
 dialog::backdrop { background: rgba(0,0,0,.4); backdrop-filter: blur(2px); }
 .dlg-body { padding: 18px; display: grid; gap: 14px; }
+#confirmDlg { width: min(400px, calc(100vw - 32px)); }
+#confirmBody { margin: 0; font-size: 14px; color: var(--text-2); line-height: 1.5; }
+#confirmDlg .actions button { flex: 1; min-height: 42px; }
 .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .actions { display: flex; gap: 8px; flex-wrap: wrap; }
 .primary { background: var(--accent); color: #fff; border: 0; border-radius: 8px; padding: 7px 14px; font-size: 13px; font-weight: 560; }

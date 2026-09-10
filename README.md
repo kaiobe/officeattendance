@@ -24,18 +24,18 @@ docker compose logs -f attendance      # "Seeded 365 days from the FY27 spreadsh
 
 ### A second copy for testing
 
-`container_name` and the published port are the only things two stacks can't share,
-so both are parameters with the production values as defaults. Deploy a second stack
-from the same repo and set two environment variables in Portainer:
+`docker-compose.test.yml` is a ready-made test stack with its own container name
+(`attendance_test`), port (**8096**) and volume. Deploy it as a separate stack from the
+same repo and set **Compose path** to `docker-compose.test.yml`. Nothing else to
+configure — leave the environment variables empty.
 
-```
-APP_NAME=attendance_test
-HOST_PORT=8096
-```
+It gets a database entirely its own, seeded fresh from the FY27 spreadsheet, so it
+cannot touch your real attendance data. To proxy it, add a separate proxy host
+forwarding to `attendance_test` on port 8080.
 
-Named volumes are prefixed with the stack name, so the test copy gets its own empty
-database and can't touch your real attendance data. If you proxy it, add a separate
-proxy host forwarding to `attendance_test` on port 8080.
+The main `docker-compose.yml` also takes `APP_NAME` and `HOST_PORT` if you'd rather
+spin up a copy that way — but they must both be set, or the copy falls back to the
+production name and collides with it.
 
 ### Without Docker
 

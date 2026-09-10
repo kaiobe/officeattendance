@@ -4,7 +4,7 @@ const DOW_S = ['Su','Mo','Tu','We','Th','Fr','Sa'];
 
 const S = {
   fy: null, today: '', settings: {}, codes: [], codeMap: {}, days: {},
-  summary: null, sel: null, anchor: null, range: [], period: 'ytd', monthIdx: null, saving: false,
+  summary: null, sel: null, anchor: null, range: [], period: 'mtd', monthIdx: null, saving: false,
 };
 
 /* ---------- date helpers (string based, no timezone drift) ---------- */
@@ -50,7 +50,7 @@ async function load(fy) {
   S.fy = data.fy;
   S.today = data.today;
   S.todayInFy = data.todayInFy;
-  if (!S.todayInFy) S.period = 'full';
+  if (!S.todayInFy && S.period === 'ytd') S.period = 'mtd';
   S.settings = data.settings;
   S.codes = data.codes;
   S.codeMap = Object.fromEntries(data.codes.map((c) => [c.code, c]));
@@ -120,8 +120,16 @@ function renderTiles() {
   const gapAhead = s.gapDays <= 0;
   const gapVal = Math.abs(s.gapDays);
 
+  // Being ahead and meeting the requirement are the same fact - gap is
+  // req - office, and the requirement is met exactly when that's at or below
+  // zero - so one pill carries both, and the days figure folds in here rather
+  // than taking a tile of its own.
+  const plural = (n) => (n === 1 ? 'day' : 'days');
+  const gapText = gapVal % 1 === 0 ? String(gapVal) : gapVal.toFixed(1);
   const dayNote = empty ? '<div class="status idle">No work days logged</div>'
-    : `<div class="status ${dStat}">${ICON[dStat]} ${dStat === 'good' ? 'Meeting requirement' : dStat === 'warning' ? 'Just under' : 'Below requirement'}</div>`;
+    : gapAhead
+      ? `<div class="status good">● ${gapVal === 0 ? 'On target' : `${gapText} ${plural(gapVal)} ahead`}</div>`
+      : `<div class="status ${dStat === 'warning' ? 'warning' : 'critical'}">▼ ${gapText} ${plural(gapVal)} short</div>`;
   // Hours only mean something once most office days have times against them.
   const patchy = s.untimedOfficeDays > s.timedOfficeDays;
   const hourNote = empty ? '<div class="status idle">No hours logged</div>'
@@ -133,16 +141,9 @@ function renderTiles() {
     <div class="tile hero">
       <div class="label">Office days</div>
       <div class="value">${empty ? '—' : pct(s.pctDays)}${empty ? '' : '<span class="unit">%</span>'}</div>
-      <div class="sub">${fmtNum(s.officeDays)} office of ${fmtNum(s.workDays)} work days${s.workingSickDays ? ` · ${s.workingSickDays} working sick excluded` : ''}</div>
+      <div class="sub">${fmtNum(s.officeDays)} office of ${fmtNum(s.workDays)} work days${empty ? '' : ` · ${fmtNum(s.reqDays)} needed`}${s.workingSickDays ? ` · ${s.workingSickDays} working sick excluded` : ''}</div>
       ${dayNote}
       ${meter(s.pctDays, req, dStat)}
-    </div>
-    <div class="tile">
-      <div class="label">Days ${empty ? 'against target' : gapAhead ? 'ahead' : 'short'}</div>
-      <div class="value">${empty ? '—' : (gapVal % 1 === 0 ? gapVal : gapVal.toFixed(1))}</div>
-      <div class="sub">Need ${fmtNum(s.reqDays)} office days${empty || gapAhead ? '' : ` · ${fmtNum(s.reqDays - s.officeDays)} to go`}</div>
-      ${empty ? '<div class="status idle">Nothing to compare yet</div>'
-        : `<div class="status ${gapAhead ? 'good' : 'critical'}">${gapAhead ? '● On track' : '▼ Short'}</div>`}
     </div>
     <div class="tile">
       <div class="label">Office hours</div>
@@ -159,9 +160,9 @@ function renderTiles() {
 
   const m = S.period === 'month' ? S.summary.months[S.monthIdx] : null;
   const mtd = S.summary.mtd;
-  $('tilesTitle').textContent = S.period === 'ytd' ? `Year to date · to ${longDate(S.today)}`
+  $('tilesTitle').innerHTML = S.period === 'ytd' ? `Year to date · to ${longDate(S.today)}`
     : S.period === 'month' ? `${m.name} ${m.year}`
-    : S.period === 'mtd' ? (mtd.partial ? `${mtd.name} ${mtd.year} · to ${longDate(mtd.through)}` : `${mtd.name} ${mtd.year}`)
+    : S.period === 'mtd' ? (mtd.partial ? `${mtd.name} ${mtd.year}<span class="through"> · to ${longDate(mtd.through)}</span>` : `${mtd.name} ${mtd.year}`)
     : `Full FY${S.fy}`;
 
   const ytdBtn = $('periodYtd');
@@ -409,12 +410,87 @@ $('outTime').oninput = updateHrs;
 $('inTime').onchange = saveCurrent;
 $('outTime').onchange = saveCurrent;
 $('comment').onchange = saveCurrent;
-$('stdTimes').onclick = () => { $('inTime').value = S.settings.defaultIn; $('outTime').value = S.settings.defaultOut; updateHrs(); saveCurrent(); };
+/**
+ * Ask before a button overwrites a time that's already recorded. Only when
+ * there is something to lose - punching in on a blank day stays one tap.
+ * Resolves false on Escape or backdrop dismissal, so the safe answer wins.
+ */
+function askConfirm({ title, body, ok }) {
+  const dlgC = $('confirmDlg');
+  return new Promise((resolve) => {
+    $('confirmTitle').textContent = title;
+    $('confirmBody').textContent = body;
+    $('confirmYes').textContent = ok;
+    const finish = (value) => {
+      $('confirmYes').removeEventListener('click', yes);
+      $('confirmNo').removeEventListener('click', no);
+      dlgC.removeEventListener('cancel', cancelled);
+      if (dlgC.open) dlgC.close();
+      resolve(value);
+    };
+    const yes = () => finish(true);
+    const no = () => finish(false);
+    const cancelled = () => finish(false);
+    $('confirmYes').addEventListener('click', yes);
+    $('confirmNo').addEventListener('click', no);
+    dlgC.addEventListener('cancel', cancelled);
+    dlgC.showModal();
+  });
+}
+
+const shownTime = (t) => t || 'not set';
+
+$('stdTimes').onclick = async () => {
+  const inV = $('inTime').value, outV = $('outTime').value;
+  if ((inV || outV) && !(await askConfirm({
+    title: 'Replace the times?',
+    body: `${shortDate(S.sel)} is ${shownTime(inV)} to ${shownTime(outV)}. Replace with the standard day, ${S.settings.defaultIn} to ${S.settings.defaultOut}?`,
+    ok: 'Replace',
+  }))) return;
+  $('inTime').value = S.settings.defaultIn;
+  $('outTime').value = S.settings.defaultOut;
+  updateHrs();
+  saveCurrent();
+};
+
 // Punching in or out is a statement that you were in the office, so it codes
 // the day O whatever it was set to before.
-$('nowIn').onclick = () => { $('inTime').value = nowHHMM(); updateHrs(); saveAsOffice(); };
-$('nowOut').onclick = () => { $('outTime').value = nowHHMM(); updateHrs(); saveAsOffice(); };
-$('clearTimes').onclick = () => { $('inTime').value = ''; $('outTime').value = ''; updateHrs(); saveCurrent(); };
+$('nowIn').onclick = async () => {
+  const now = nowHHMM(), inV = $('inTime').value;
+  if (inV && !(await askConfirm({
+    title: 'Change the In time?',
+    body: `${shortDate(S.sel)} already has an In time of ${inV}. Change it to ${now}?`,
+    ok: 'Change it',
+  }))) return;
+  $('inTime').value = now;
+  updateHrs();
+  saveAsOffice();
+};
+
+$('nowOut').onclick = async () => {
+  const now = nowHHMM(), outV = $('outTime').value;
+  if (outV && !(await askConfirm({
+    title: 'Change the Out time?',
+    body: `${shortDate(S.sel)} already has an Out time of ${outV}. Change it to ${now}?`,
+    ok: 'Change it',
+  }))) return;
+  $('outTime').value = now;
+  updateHrs();
+  saveAsOffice();
+};
+
+$('clearTimes').onclick = async () => {
+  const inV = $('inTime').value, outV = $('outTime').value;
+  if ((inV || outV) && !(await askConfirm({
+    title: 'Clear the times?',
+    body: `${shortDate(S.sel)} is ${shownTime(inV)} to ${shownTime(outV)}. Clearing removes both.`,
+    ok: 'Clear them',
+  }))) return;
+  $('inTime').value = '';
+  $('outTime').value = '';
+  updateHrs();
+  saveCurrent();
+};
 
 $('periodYtd').onclick = () => { if (!S.todayInFy) return; S.period = 'ytd'; renderTiles(); };
 $('periodFull').onclick = () => { S.period = 'full'; renderTiles(); };

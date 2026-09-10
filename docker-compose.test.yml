@@ -1,0 +1,40 @@
+# A second, independent copy for testing, with the names and ports written in
+# rather than left to environment variables - nothing to set in Portainer.
+#
+# Deploy it as its own stack (call it attendance-test), setting Compose path to
+#     docker-compose.test.yml
+# and leave the environment variables empty.
+#
+# Reachable on http://<host>:8096, with a database entirely its own: it seeds a
+# fresh copy from the FY27 spreadsheet and cannot touch your real data.
+
+services:
+  attendance-test:
+    build: .
+    pull_policy: build
+    container_name: attendance_test
+    restart: unless-stopped
+    ports:
+      - "8096:8080"
+    environment:
+      TZ: Australia/Melbourne
+      TZ_NAME: Australia/Melbourne
+      DB_FILE: /data/attendance.db
+    volumes:
+      - attendance-test-data:/data     # its own volume, separate from production
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/api/health"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+    networks:
+      - nginxproxymanager
+
+volumes:
+  attendance-test-data:
+
+networks:
+  # In a proxy host for the test site, forward to `attendance_test` on port 8080.
+  nginxproxymanager:
+    external: true
+    name: nginxproxymanager

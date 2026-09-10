@@ -71,9 +71,9 @@
       <h2 id="tilesTitle">Year to date</h2>
       <div class="spacer"></div>
       <div class="seg" role="group" aria-label="Period">
-        <button id="periodYtd" aria-pressed="true">Year to date</button>
-        <button id="periodFull" aria-pressed="false">Full year</button>
-        <button id="periodMtd" aria-pressed="false">Month to date</button>
+        <button id="periodYtd" aria-pressed="false"><span class="lbl-long">Year to date</span><span class="lbl-short">YTD</span></button>
+        <button id="periodFull" aria-pressed="false"><span class="lbl-long">Full year</span><span class="lbl-short">Year</span></button>
+        <button id="periodMtd" aria-pressed="true"><span class="lbl-long">Month to date</span><span class="lbl-short">MTD</span></button>
         <button id="periodMonth" aria-pressed="false">Month</button>
       </div>
       <label class="sr" for="monthSel">Month</label>
@@ -129,6 +129,17 @@
       <input type="file" id="importFile" accept="application/json" hidden>
     </div>
     <p class="note">Work days for the requirement = Office + Home; working sick is counted in the key totals under the grid, not in the percentage. Office hours count only on Office days. Data lives in <code>data/attendance.db</code>.</p>
+  </div>
+</dialog>
+
+<dialog id="confirmDlg">
+  <div class="card-head"><h2 id="confirmTitle">Change the time?</h2></div>
+  <div class="dlg-body">
+    <p id="confirmBody"></p>
+    <div class="actions">
+      <button class="primary" id="confirmYes">Change it</button>
+      <button class="ghost" id="confirmNo">Keep it</button>
+    </div>
   </div>
 </dialog>
 
