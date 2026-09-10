@@ -237,7 +237,14 @@ async function serveStatic(req, res, pathname) {
     const info = await stat(file);
     if (!info.isFile()) throw new Error('not a file');
     const buf = await readFile(file);
-    res.writeHead(200, { 'content-type': MIME[extname(file)] || 'application/octet-stream', 'cache-control': 'no-cache' });
+    // no-store rather than no-cache: "no-cache" still permits a stored copy and
+    // relies on revalidation, and a CDN in front (Cloudflare caches .js and .css
+    // by extension) will happily keep serving the old app after a redeploy.
+    res.writeHead(200, {
+      'content-type': MIME[extname(file)] || 'application/octet-stream',
+      'cache-control': 'no-store, max-age=0, must-revalidate',
+      'last-modified': info.mtime.toUTCString(),
+    });
     res.end(buf);
   } catch {
     res.writeHead(404, { 'content-type': 'text/plain' }).end('not found');

@@ -217,6 +217,9 @@ function renderLog() {
   $('inTime').value = rec.in || '';
   $('outTime').value = rec.out || '';
   $('comment').value = rec.comment || '';
+  // What's on record, so a direct edit of the field can be compared against it
+  // and offered back if the change wasn't intended.
+  S.prevTimes = { in: rec.in || '', out: rec.out || '' };
   updateHrs();
 }
 
@@ -407,8 +410,33 @@ $('fysel').onchange = (e) => { S.sel = null; load(Number(e.target.value)); };
 
 $('inTime').oninput = updateHrs;
 $('outTime').oninput = updateHrs;
-$('inTime').onchange = saveCurrent;
-$('outTime').onchange = saveCurrent;
+/**
+ * Editing the field itself gets the same guard as the buttons - typing over a
+ * recorded time, or fumbling the picker on a phone, loses it just as easily.
+ * Declining puts the original back.
+ */
+async function onTimeEdited(which) {
+  const el = $(which === 'in' ? 'inTime' : 'outTime');
+  const prev = (S.prevTimes || {})[which] || '';
+  const next = el.value;
+  if (prev && next !== prev) {
+    const label = which === 'in' ? 'In' : 'Out';
+    const okd = await askConfirm({
+      title: `Change the ${label} time?`,
+      body: next
+        ? `${shortDate(S.sel)} has a recorded ${label} time of ${prev}. Change it to ${next}?`
+        : `${shortDate(S.sel)} has a recorded ${label} time of ${prev}. Remove it?`,
+      ok: next ? 'Change it' : 'Remove it',
+    });
+    if (!okd) { el.value = prev; updateHrs(); return; }
+  }
+  S.prevTimes[which] = next;
+  updateHrs();
+  saveCurrent();
+}
+
+$('inTime').onchange = () => onTimeEdited('in');
+$('outTime').onchange = () => onTimeEdited('out');
 $('comment').onchange = saveCurrent;
 /**
  * Ask before a button overwrites a time that's already recorded. Only when
