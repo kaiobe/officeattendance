@@ -1,7 +1,7 @@
 # Office Attendance
 
 Self-hosted tracker for office days and hours across an **October–September financial year**.
-A direct replacement for the FY27 spreadsheet: same codes, same colours, same formulas —
+A direct replacement for the FY2x spreadsheet: same codes, same colours, same formulas —
 plus one-tap logging, a full-year grid, and a database instead of a workbook.
 
 ---
