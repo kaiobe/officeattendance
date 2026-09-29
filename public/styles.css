@@ -238,31 +238,31 @@ select.ghost { padding-right: 8px; }
 .seg button[aria-pressed="true"] { background: var(--surface-1); color: var(--text-1); box-shadow: var(--shadow); font-weight: 560; }
 
 /* ---------- grid ---------- */
-#gridCard { margin-inline: calc(50% - min(50vw - 20px, 800px)); }
+#gridCard { margin-inline: calc(50% - min(50vw - 20px, 880px)); }
 .gridscroll { overflow-x: auto; padding: 6px 18px 18px; }
 table.cal { border-collapse: separate; border-spacing: 2px; font-variant-numeric: tabular-nums; }
-table.cal th { font-weight: 500; font-size: 11px; color: var(--text-3); padding: 0 2px 4px; text-align: center; }
+table.cal th { font-weight: 500; font-size: 12px; color: var(--text-3); padding: 0 2px 5px; text-align: center; }
 table.cal th.mth, table.cal td.mth {
-  text-align: left; font-size: 12px; color: var(--text-2); font-weight: 560;
+  text-align: left; font-size: 13px; color: var(--text-2); font-weight: 560;
   position: sticky; left: 0; background: var(--surface-1); padding-right: 10px; z-index: 2; white-space: nowrap;
 }
-table.cal th.num { min-width: 24px; }
-table.cal th.stat, table.cal td.stat { font-size: 12px; padding-left: 6px; text-align: right; color: var(--text-2); white-space: nowrap; }
-table.cal th.stat { color: var(--text-3); font-size: 10px; text-transform: uppercase; letter-spacing: .05em; vertical-align: bottom; }
+table.cal th.num { min-width: 26px; }
+table.cal th.stat, table.cal td.stat { font-size: 13px; padding-left: 7px; text-align: right; color: var(--text-2); white-space: nowrap; }
+table.cal th.stat { color: var(--text-3); font-size: 11px; text-transform: uppercase; letter-spacing: .05em; vertical-align: bottom; }
 
 /* the Days | Hours divide */
-table.cal th.sep, table.cal td.sep { border-left: 1px solid var(--border-strong); padding-left: 16px; }
-table.cal th.endgroup, table.cal td.endgroup { padding-right: 16px; }
+table.cal th.sep, table.cal td.sep { border-left: 1px solid var(--border-strong); padding-left: 18px; }
+table.cal th.endgroup, table.cal td.endgroup { padding-right: 18px; }
 table.cal tr.grouphead th { padding-bottom: 2px; }
 table.cal th.grp {
-  text-align: left; font-size: 10px; text-transform: uppercase; letter-spacing: .09em;
+  text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: .09em;
   color: var(--text-2); font-weight: 620; padding-left: 10px;
 }
 table.cal th.grp.sep { padding-left: 14px; }
 td.cell { padding: 0; }
 .cell button {
-  width: 24px; height: 24px; border: 0; border-radius: 5px; padding: 0;
-  font-size: 10px; font-weight: 620; letter-spacing: -.02em; display: grid; place-items: center;
+  width: 26px; height: 26px; border: 0; border-radius: 6px; padding: 0;
+  font-size: 11px; font-weight: 620; letter-spacing: -.02em; display: grid; place-items: center;
   background: var(--surface-2); color: var(--text-3); position: relative;
 }
 .cell button.empty { background: var(--surface-2); color: var(--text-3); box-shadow: inset 0 0 0 1px var(--border); }
