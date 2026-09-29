@@ -7,7 +7,7 @@
  * reports. They differ only when the browser is running JavaScript older than
  * the deploy, i.e. a cached page, which is exactly the thing worth knowing.
  */
-const APP_VERSION = '1.1.0';
+const APP_VERSION = '1.1.1';
 
 const $ = (id) => document.getElementById(id);
 const DOW = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
@@ -33,7 +33,10 @@ const shortDate = (s) => { const [y,m,d] = parse(s); return `${d} ${MON_S[m-1]} 
 const nowHHMM = () => { const d = new Date(); return `${pad(d.getHours())}:${pad(d.getMinutes())}`; };
 const minsBetween = (a, b) => { if (!a || !b) return 0; const [ah,am] = a.split(':').map(Number), [bh,bm] = b.split(':').map(Number); let x = bh*60+bm-(ah*60+am); if (x < 0) x += 1440; return x; };
 const fmtHrs = (h) => (Math.round(h * 100) / 100).toLocaleString('en-AU', { maximumFractionDigits: 2 });
-const fmtHrs1 = (h) => (Math.round(h * 10) / 10).toLocaleString('en-AU', { maximumFractionDigits: 1 });
+// The grid's hours columns, always to two places. Times are entered to the
+// quarter hour, so two places are exact - one place turns 1.75 into 1.8, which
+// is a number that was never worked.
+const fmtHrs2 = (h) => h.toLocaleString('en-AU', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const fmtNum = (n) => n.toLocaleString('en-AU', { maximumFractionDigits: 1 });
 const pct = (v) => v == null ? '—' : `${(v * 100).toFixed(1)}`;
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -264,12 +267,12 @@ function dayStatCells(m) {
 
 function hourStatCells(m) {
   const hasHrs = m.officeHrs > 0;
-  return `<td class="stat sep">${hasHrs ? fmtHrs1(m.officeHrs) : '—'}</td>
-    <td class="stat">${m.availableHrs ? fmtHrs1(m.availableHrs) : '—'}</td>
+  return `<td class="stat sep">${hasHrs ? fmtHrs2(m.officeHrs) : '—'}</td>
+    <td class="stat">${m.availableHrs ? fmtHrs2(m.availableHrs) : '—'}</td>
     <td class="stat">${hasHrs && m.pctHrs != null ? pct(m.pctHrs) + '%' : '—'}</td>
-    <td class="stat">${m.availableHrs ? fmtHrs1(m.reqHrs) : '—'}</td>
-    ${gapCell(m.gapHrs, hasHrs ? m.availableHrs : 0, fmtHrs1)}
-    <td class="stat">${m.avgHrsPerOfficeDay == null ? '—' : fmtHrs1(m.avgHrsPerOfficeDay)}</td>`;
+    <td class="stat">${m.availableHrs ? fmtHrs2(m.reqHrs) : '—'}</td>
+    ${gapCell(m.gapHrs, hasHrs ? m.availableHrs : 0, fmtHrs2)}
+    <td class="stat">${m.avgHrsPerOfficeDay == null ? '—' : fmtHrs2(m.avgHrsPerOfficeDay)}</td>`;
 }
 
 function renderGrid() {

@@ -10,6 +10,13 @@ Versions are `MAJOR.MINOR.PATCH`:
 `npm run bump [major|minor|patch]` moves the number in every place it appears
 and opens an entry here. Nothing else should edit a version by hand.
 
+## 1.1.1 - 2026-09-29
+
+- The grid's hours columns show two decimal places instead of one. Times are
+  entered to the quarter hour, so one place turned a genuine 1.75 into 1.8 —
+  a number that was never worked. Percentages and the day columns are
+  unchanged.
+
 ## 1.1.0 - 2026-09-29
 
 - A release number in the top right of the page, and a scheme behind it.
