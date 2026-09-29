@@ -1,6 +1,18 @@
+/**
+ * The release this page was built from. `npm run bump` rewrites this line and
+ * package.json together; the server compares the two and complains at startup
+ * if they ever drift apart.
+ *
+ * The page sends it nowhere - it compares it against the version the server
+ * reports. They differ only when the browser is running JavaScript older than
+ * the deploy, i.e. a cached page, which is exactly the thing worth knowing.
+ */
+const APP_VERSION = '1.1.0';
+
 const $ = (id) => document.getElementById(id);
 const DOW = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
 const DOW_S = ['Su','Mo','Tu','We','Th','Fr','Sa'];
+const MON_S = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 
 const S = {
   fy: null, today: '', settings: {}, codes: [], codeMap: {}, days: {},
@@ -17,7 +29,7 @@ const fyOf = (s) => { const [y,m] = parse(s); return (m >= 10 ? y + 1 : y) - 200
 const fyStart = (fy) => `${2000 + fy - 1}-10-01`;
 const fyEnd = (fy) => `${2000 + fy}-09-30`;
 const longDate = (s) => { const [y,m,d] = parse(s); return `${d} ${['January','February','March','April','May','June','July','August','September','October','November','December'][m-1]} ${y}`; };
-const shortDate = (s) => { const [y,m,d] = parse(s); return `${d} ${['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][m-1]} ${y}`; };
+const shortDate = (s) => { const [y,m,d] = parse(s); return `${d} ${MON_S[m-1]} ${y}`; };
 const nowHHMM = () => { const d = new Date(); return `${pad(d.getHours())}:${pad(d.getMinutes())}`; };
 const minsBetween = (a, b) => { if (!a || !b) return 0; const [ah,am] = a.split(':').map(Number), [bh,bm] = b.split(':').map(Number); let x = bh*60+bm-(ah*60+am); if (x < 0) x += 1440; return x; };
 const fmtHrs = (h) => (Math.round(h * 100) / 100).toLocaleString('en-AU', { maximumFractionDigits: 2 });
@@ -59,6 +71,7 @@ async function load(fy) {
   S.unconfirmed = data.unconfirmedHolidayYears || [];
   S.lastFy = data.lastFy;
   S.build = data.build;
+  S.version = data.version;
   S.fys = data.availableFys;
   if (!S.sel || fyOf(S.sel) !== S.fy) {
     S.sel = fyOf(S.today) === S.fy ? S.today : fyStart(S.fy);
@@ -337,11 +350,25 @@ function renderGridNote() {
  */
 function renderVersion() {
   const el = $('version');
-  if (!S.build) { el.textContent = ''; return; }
-  const d = new Date(S.build);
-  const mon = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][d.getMonth()];
-  el.textContent = `${d.getDate()} ${mon} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
-  el.title = `Build served by this page: ${d.toLocaleString('en-AU')}`;
+  const served = S.version || null;
+  const stale = served && served !== APP_VERSION;
+  const built = S.build ? new Date(S.build) : null;
+  const builtLong = built ? `${built.getDate()} ${MON_S[built.getMonth()]} ${pad(built.getHours())}:${pad(built.getMinutes())}` : 'unknown';
+
+  el.classList.toggle('stale', !!stale);
+  el.textContent = stale ? `v${APP_VERSION} \u2192 v${served}` : `v${APP_VERSION}`;
+  el.title = stale
+    ? `This page is running v${APP_VERSION}, but the server is serving v${served}.\nClick to reload.`
+    : `Release v${APP_VERSION}\nDeployed ${builtLong}`;
+  el.setAttribute('role', stale ? 'button' : 'presentation');
+  el.tabIndex = stale ? 0 : -1;
+}
+
+/** Reload past whatever cache handed us the old page. */
+function hardReload() {
+  const u = new URL(location.href);
+  u.searchParams.set('v', Date.now());
+  location.replace(u.toString());
 }
 
 function renderAll() {
@@ -541,6 +568,12 @@ $('periodFull').onclick = () => { S.period = 'full'; renderTiles(); };
 $('periodMtd').onclick = () => { S.period = 'mtd'; renderTiles(); };
 $('periodMonth').onclick = () => { S.period = 'month'; renderTiles(); };
 $('monthSel').onchange = (e) => { S.monthIdx = Number(e.target.value); renderTiles(); };
+
+// Only acts when the page has gone stale; renderVersion decides that.
+$('version').onclick = () => { if ($('version').classList.contains('stale')) hardReload(); };
+$('version').onkeydown = (e) => {
+  if ((e.key === 'Enter' || e.key === ' ') && $('version').classList.contains('stale')) { e.preventDefault(); hardReload(); }
+};
 
 const themeBtn = $('themeBtn');
 const applyTheme = (t) => { if (t) document.documentElement.dataset.theme = t; else delete document.documentElement.dataset.theme; };

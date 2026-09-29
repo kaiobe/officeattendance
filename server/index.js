@@ -1,12 +1,12 @@
 import { createServer } from 'node:http';
 import { readFile, stat } from 'node:fs/promises';
-import { readdirSync, statSync } from 'node:fs';
 import { join, extname, normalize, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { openDb, getSettings, setSettings, getDays, upsertDay, seedIfEmpty, DEFAULT_SETTINGS } from './db.js';
 import { buildSummary, fyMonths, daysInMonth, iso, weekdayOf, fyOfDate, MONTH_NAMES } from './calc.js';
 import { CODES, VALID } from './codes.js';
 import { holidaysBetween, unconfirmedHolidayYears } from './holidays.js';
+import { VERSION, BUILD, versionInfo, versionDrift } from './version.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const PUBLIC = join(HERE, '..', 'public');
@@ -18,18 +18,8 @@ const db = openDb(DB_FILE);
 const seeded = seedIfEmpty(db);
 if (seeded) console.log(`Seeded ${seeded} days from the FY27 spreadsheet.`);
 
-/**
- * A stamp for the running build, from the newest file in public/. Shown in
- * Settings and returned by /api/health, so "is my deploy actually live?" is a
- * one-second check rather than guesswork about caches and rebuilds.
- */
-const BUILD = (() => {
-  try {
-    return readdirSync(PUBLIC)
-      .map((f) => statSync(join(PUBLIC, f)).mtime.getTime())
-      .reduce((a, b) => Math.max(a, b), 0) || null;
-  } catch { return null; }
-})();
+const drift = versionDrift();
+if (drift) console.warn(`Version mismatch: `);
 
 const todayStr = () =>
   new Intl.DateTimeFormat('en-CA', { timeZone: TZ, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
@@ -283,9 +273,7 @@ const server = createServer(async (req, res) => {
   const p = url.pathname;
   try {
     if (p === '/api/health') return json(res, 200, {
-      ok: true, today: todayStr(), tz: TZ,
-      build: BUILD,
-      buildUtc: BUILD ? new Date(BUILD).toISOString() : null,
+      ok: true, today: todayStr(), tz: TZ, ...versionInfo(),
     });
 
     if (p === '/api/state' && req.method === 'GET') {
@@ -309,6 +297,7 @@ const server = createServer(async (req, res) => {
         summary: buildSummary(fy, days, settings, today),
         autofilled,
         lastFy,
+        version: VERSION,
         build: BUILD,
         unconfirmedHolidayYears: unconfirmedHolidayYears(from, to),
         availableFys: availableFys(today, lastFy),
@@ -428,4 +417,4 @@ const server = createServer(async (req, res) => {
   }
 });
 
-server.listen(PORT, () => console.log(`Office attendance tracker on http://0.0.0.0:${PORT}  (db: ${DB_FILE}, tz: ${TZ})`));
+server.listen(PORT, () => console.log(`Office attendance v${VERSION} on http://0.0.0.0:${PORT}  (db: ${DB_FILE}, tz: ${TZ})`));

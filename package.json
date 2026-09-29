@@ -1,12 +1,13 @@
 {
   "name": "office-attendance",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "private": true,
   "type": "module",
   "description": "Self-hosted office attendance tracker (days + hours) for an Oct-Sep financial year",
   "main": "server/index.js",
   "scripts": {
-    "start": "node server/index.js"
+    "start": "node server/index.js",
+    "bump": "node scripts/bump.mjs"
   },
   "engines": { "node": ">=22.5" }
 }

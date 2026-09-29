@@ -108,6 +108,13 @@ header.top {
 .ghost.danger:hover { color: var(--critical); background: var(--critical-soft); border-color: var(--critical); }
 select.ghost { padding-right: 8px; }
 .version { font-size: 11px; color: var(--text-3); font-variant-numeric: tabular-nums; white-space: nowrap; }
+/* Only a stale page is clickable, so only a stale page looks it. */
+.version.stale {
+  color: var(--warning); background: var(--warning-soft);
+  padding: 3px 8px; border-radius: 999px; font-weight: 600; cursor: pointer;
+}
+.version.stale:hover { filter: brightness(1.06); }
+.version.stale:focus-visible { outline: 2px solid var(--warning); outline-offset: 2px; }
 @media (max-width: 620px) { .version { order: 99; flex-basis: 100%; text-align: right; } }
 
 /* ---------- cards ---------- */

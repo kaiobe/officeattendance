@@ -131,6 +131,62 @@ object when it's announced, or just code the day `PH` by hand.
 
 ---
 
+## Versioning
+
+The number in the top right of the page is the release. It comes from
+`package.json`, which is the only place a version is written by hand — and not
+even by hand, because `npm run bump` writes it.
+
+```
+npm run bump          # 1.1.0 -> 1.1.1
+npm run bump minor    # 1.1.0 -> 1.2.0
+npm run bump major    # 1.1.0 -> 2.0.0
+npm run bump -- 2.0.0 # an exact version
+```
+
+| | When |
+|---|---|
+| **MAJOR** | The database or the API changes shape — an old backup may need thought |
+| **MINOR** | A new feature, or a visible change to how something behaves |
+| **PATCH** | A fix, a layout tweak, wording |
+
+One command moves all three places at once: `package.json`, the `APP_VERSION`
+constant in `public/app.js`, and a dated stub at the top of `CHANGELOG.md` for
+you to fill in. They can't drift apart if nothing else ever edits them.
+
+### Telling a stale page from a stale deploy
+
+The release number is baked into `public/app.js`, so the page carries its own
+copy. On load it compares that against the version the server reports, and the
+two can only disagree when the browser is running older JavaScript than the
+server is serving — a cached page.
+
+When that happens the badge turns amber and reads `v1.1.0 → v1.2.0`. Click it
+and the page reloads past the cache. So a page that looks current *is* current,
+which the old build timestamp couldn't promise: it changed on every deploy,
+including the ones that changed nothing, and it said nothing at all about the
+page you happened to be looking at.
+
+`/api/health` answers the same question from outside the browser:
+
+```bash
+curl -s http://localhost:8095/api/health
+{"ok":true,"today":"2026-09-29","tz":"Australia/Melbourne",
+ "version":"1.1.0","build":1790664177824,"buildUtc":"2026-09-29T06:42:57.824Z"}
+```
+
+`version` is the release; `build` is the deploy, taken from the newest file in
+`public/`, so two deploys of the same release are still distinguishable. The
+container logs the version it started on, and warns if the page and
+`package.json` have fallen out of step:
+
+```
+Office attendance v1.1.0 on http://0.0.0.0:8080
+Version mismatch: public/app.js says 1.1.0, package.json says 1.2.0 - run: npm run bump
+```
+
+---
+
 ## Codes
 
 | | | Work days (requirement) | Days worked (key) | Total work days (key) |
@@ -211,7 +267,7 @@ docker compose exec -T attendance wget -qO- http://127.0.0.1:8080/api/export.jso
 | `POST` | `/api/clear-future` | `{"fy":26}` — clear entries from tomorrow to that year's end |
 | `GET` | `/api/export.csv?fy=27` · `/api/export.json` | Exports |
 | `POST` | `/api/import` | Restore a backup |
-| `GET` | `/api/health` | For the healthcheck |
+| `GET` | `/api/health` | Healthcheck, plus `version`, `build` and `buildUtc` |
 
 There is no authentication — it's built to sit on the tailnet, not the open internet.
 If you ever expose it, put it behind your reverse proxy's auth.
