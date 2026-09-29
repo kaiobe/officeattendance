@@ -104,6 +104,8 @@ header.top {
   border-radius: 8px; padding: 6px 11px; font-size: 13px; transition: background .12s, border-color .12s;
 }
 .ghost:hover { background: var(--surface-2); border-color: var(--border-strong); color: var(--text-1); }
+.ghost.danger { color: var(--critical); border-color: color-mix(in srgb, var(--critical) 35%, var(--border)); }
+.ghost.danger:hover { color: var(--critical); background: var(--critical-soft); border-color: var(--critical); }
 select.ghost { padding-right: 8px; }
 
 /* ---------- cards ---------- */

@@ -572,6 +572,43 @@ $('fillSkeleton').onclick = async () => {
   const r = await api('/api/calendar-skeleton', { method: 'POST', body: JSON.stringify({ fy: S.fy }) });
   await refresh(); dlg.close(); flash(`${r.filled} days filled`);
 };
+/**
+ * Everything entered against days still to come, from tomorrow to the end of
+ * the financial year. The calendar itself is left alone, so this only ever
+ * removes entries, never the shape of the year.
+ */
+function futureEntries() {
+  // Tomorrow, or the start of the year being viewed if that comes later.
+  const tomorrow = shift(S.today, 1);
+  const from = tomorrow > fyStart(S.fy) ? tomorrow : fyStart(S.fy);
+  const to = fyEnd(S.fy);
+  const skeleton = new Set(['W', 'NW', 'PH']);
+  const dates = Object.entries(S.days)
+    .filter(([date, rec]) => date >= from && date <= to && !skeleton.has(rec.code))
+    .map(([date]) => date)
+    .sort();
+  return { from, to, dates };
+}
+
+$('clearFuture').onclick = async () => {
+  const { from, to, dates } = futureEntries();
+  const n = dates.length;
+  if (!n) { flash(`Nothing logged between ${shortDate(from)} and ${shortDate(to)}`); return; }
+  const day = n === 1 ? 'day' : 'days';
+  const okd = await askConfirm({
+    title: `Clear ${n} future ${day}?`,
+    body: `This removes everything logged between ${shortDate(from)} and ${shortDate(to)} — ${n} ${day}`
+      + `${dates[0] !== from ? `, starting ${shortDate(dates[0])}` : ''}. `
+      + `Weekends, public holidays and non-working days stay. Today and anything earlier is untouched.`,
+    ok: 'Clear them',
+  });
+  if (!okd) return;
+  const r = await api('/api/clear-future', { method: 'POST', body: JSON.stringify({ fy: S.fy }) });
+  await refresh();
+  dlg.close();
+  flash(`${r.cleared} future ${r.cleared === 1 ? 'day' : 'days'} cleared`);
+};
+
 $('importBtn').onclick = () => $('importFile').click();
 $('importFile').onchange = async (e) => {
   const f = e.target.files[0]; if (!f) return;

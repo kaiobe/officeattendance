@@ -109,6 +109,12 @@ to empty.
 hand — useful after changing your non-working weekday. It never overwrites a day you've
 already coded.
 
+**Clear future days** (Settings, below it) wipes everything logged from tomorrow to the
+end of the financial year being viewed — a planned year you'd rather redo, say. Today and
+anything earlier is never touched, and neither is the calendar: weekends, public holidays
+and non-working days stay, so the year keeps its shape and only your entries go. It shows
+the exact range and day count before it commits.
+
 ### Public holidays
 
 Victorian public holidays are computed from the rules that define them (second Monday in
@@ -202,6 +208,7 @@ docker compose exec -T attendance wget -qO- http://127.0.0.1:8080/api/export.jso
 | `PUT` | `/api/settings` | Any of the settings fields |
 | `POST` | `/api/calendar-skeleton` | `{"fy":27}` — fill weekends, public holidays and non-working days |
 | `POST` | `/api/add-fy` | Move the horizon on one year and lay that year out |
+| `POST` | `/api/clear-future` | `{"fy":26}` — clear entries from tomorrow to that year's end |
 | `GET` | `/api/export.csv?fy=27` · `/api/export.json` | Exports |
 | `POST` | `/api/import` | Restore a backup |
 | `GET` | `/api/health` | For the healthcheck |

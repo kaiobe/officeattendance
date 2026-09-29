@@ -124,6 +124,12 @@ function tidyFutureYears(lastFy) {
   return removed;
 }
 
+const nextDay = (dateStr) => {
+  const [y, m, d] = dateStr.split('-').map(Number);
+  const t = new Date(Date.UTC(y, m - 1, d + 1));
+  return iso(t.getUTCFullYear(), t.getUTCMonth() + 1, t.getUTCDate());
+};
+
 const validDate = (s) => typeof s === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(s);
 const validTime = (s) => s == null || s === '' || /^([01]\d|2[0-3]):[0-5]\d$/.test(s);
 
@@ -349,6 +355,34 @@ const server = createServer(async (req, res) => {
       const settings = getSettings(db);
       const fy = Number(body.fy) || fyOfDate(todayStr());
       return json(res, 200, { filled: calendarSkeleton(fy, settings, !!body.overwrite) });
+    }
+
+    /**
+     * Wipe what's been entered against still-to-come days: tomorrow through the
+     * end of the financial year. Today is left alone - it's usually already
+     * logged - and the calendar itself (weekends, public holidays, non-working
+     * days) stays, so the year keeps its shape and only the entries go.
+     * Dates are taken from the server's clock, never the caller's.
+     */
+    if (p === '/api/clear-future' && req.method === 'POST') {
+      const body = await readBody(req);
+      const settings = getSettings(db);
+      const today = todayStr();
+      const fy = Math.min(Number(body.fy) || fyOfDate(today), resolveLastFy(settings, today));
+      const [fyFrom, fyTo] = fyBounds(fy);
+      const from = nextDay(today) > fyFrom ? nextDay(today) : fyFrom;
+      if (from > fyTo) return json(res, 200, { cleared: 0, from, to: fyTo });
+
+      const days = getDays(db, from, fyTo);
+      const targets = Object.entries(days)
+        .filter(([, r]) => !SKELETON_CODES.has(r.code))
+        .map(([date]) => date);
+      db.exec('BEGIN');
+      try {
+        for (const date of targets) upsertDay(db, date, null);
+        db.exec('COMMIT');
+      } catch (e) { db.exec('ROLLBACK'); throw e; }
+      return json(res, 200, { cleared: targets.length, from, to: fyTo });
     }
 
     if (p === '/api/export.csv') {
