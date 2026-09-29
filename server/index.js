@@ -25,11 +25,10 @@ if (seeded) console.log(`Seeded ${seeded} days from the FY27 spreadsheet.`);
  */
 const BUILD = (() => {
   try {
-    const newest = readdirSync(PUBLIC)
+    return readdirSync(PUBLIC)
       .map((f) => statSync(join(PUBLIC, f)).mtime.getTime())
-      .reduce((a, b) => Math.max(a, b), 0);
-    return new Date(newest).toISOString().slice(0, 16).replace('T', ' ') + ' UTC';
-  } catch { return 'unknown'; }
+      .reduce((a, b) => Math.max(a, b), 0) || null;
+  } catch { return null; }
 })();
 
 const todayStr = () =>
@@ -283,7 +282,11 @@ const server = createServer(async (req, res) => {
   const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
   const p = url.pathname;
   try {
-    if (p === '/api/health') return json(res, 200, { ok: true, today: todayStr(), tz: TZ, build: BUILD });
+    if (p === '/api/health') return json(res, 200, {
+      ok: true, today: todayStr(), tz: TZ,
+      build: BUILD,
+      buildUtc: BUILD ? new Date(BUILD).toISOString() : null,
+    });
 
     if (p === '/api/state' && req.method === 'GET') {
       const settings = getSettings(db);

@@ -107,6 +107,8 @@ header.top {
 .ghost.danger { color: var(--critical); border-color: color-mix(in srgb, var(--critical) 35%, var(--border)); }
 .ghost.danger:hover { color: var(--critical); background: var(--critical-soft); border-color: var(--critical); }
 select.ghost { padding-right: 8px; }
+.version { font-size: 11px; color: var(--text-3); font-variant-numeric: tabular-nums; white-space: nowrap; }
+@media (max-width: 620px) { .version { order: 99; flex-basis: 100%; text-align: right; } }
 
 /* ---------- cards ---------- */
 .card {

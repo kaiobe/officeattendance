@@ -330,12 +330,27 @@ function renderGridNote() {
     so ${years.length > 1 ? 'those days are' : 'that day is'} not marked as a public holiday. Add it by hand once it's confirmed.</span>`;
 }
 
+/**
+ * The build being served, from the newest file in public/. Shown in the header
+ * so a stale page is obvious at a glance rather than something to go digging
+ * for after a deploy. Rendered in the viewer's own timezone.
+ */
+function renderVersion() {
+  const el = $('version');
+  if (!S.build) { el.textContent = ''; return; }
+  const d = new Date(S.build);
+  const mon = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][d.getMonth()];
+  el.textContent = `${d.getDate()} ${mon} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  el.title = `Build served by this page: ${d.toLocaleString('en-AU')}`;
+}
+
 function renderAll() {
   $('fyLabel').textContent = S.fy;
   $('fyrange').textContent = `FY${S.fy} · Oct ${2000 + S.fy - 1} – Sep ${2000 + S.fy}`;
   const sel = $('fysel');
   sel.innerHTML = S.fys.map((f) => `<option value="${f}" ${f === S.fy ? 'selected' : ''}>FY${f}</option>`).join('');
   $('csvLink').href = `/api/export.csv?fy=${S.fy}`;
+  renderVersion();
   renderTiles(); renderLog(); renderGrid(); renderKeyTotals(); renderGridNote(); renderLegend();
 }
 
@@ -545,7 +560,6 @@ $('settingsBtn').onclick = () => {
   $('setReq').value = Math.round(S.settings.officeReqPct * 100);
   $('setNw').value = S.settings.nonWorkingWeekday;
   $('addFyLabel').textContent = `Add FY${S.lastFy + 1}`;
-  $('buildStamp').textContent = S.build || 'unknown';
   $('setIn').value = S.settings.defaultIn;
   $('setOut').value = S.settings.defaultOut;
   dlg.showModal();
