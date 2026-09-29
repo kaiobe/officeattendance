@@ -10,6 +10,11 @@ Versions are `MAJOR.MINOR.PATCH`:
 `npm run bump [major|minor|patch]` moves the number in every place it appears
 and opens an entry here. Nothing else should edit a version by hand.
 
+## 1.1.2 - 2026-09-29
+
+- The comment box no longer carries example text. It sits empty under its
+  "Comment" label.
+
 ## 1.1.1 - 2026-09-29
 
 - The grid's hours columns show two decimal places instead of one. Times are

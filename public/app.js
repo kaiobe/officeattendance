@@ -7,7 +7,7 @@
  * reports. They differ only when the browser is running JavaScript older than
  * the deploy, i.e. a cached page, which is exactly the thing worth knowing.
  */
-const APP_VERSION = '1.1.1';
+const APP_VERSION = '1.1.2';
 
 const $ = (id) => document.getElementById(id);
 const DOW = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
