@@ -14,6 +14,13 @@ services:
     # stack name, so the test copy can't touch your real attendance data.
     container_name: ${APP_NAME:-attendance}
     restart: unless-stopped
+    # Hardening: no privilege escalation, no Linux capabilities (it listens on
+    # 8080 and writes only to /data, so it needs none), and a tiny init as PID 1.
+    init: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
     ports:
       - "${HOST_PORT:-8095}:8080"    # direct LAN access; safe to remove once it's behind the proxy
 

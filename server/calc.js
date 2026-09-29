@@ -1,42 +1,5 @@
 import { CODE_MAP } from './codes.js';
-
-export const pad = (n) => String(n).padStart(2, '0');
-export const iso = (y, m, d) => `${y}-${pad(m)}-${pad(d)}`;
-export const daysInMonth = (y, m) => new Date(Date.UTC(y, m, 0)).getUTCDate();
-// 0=Sun..6=Sat
-export const weekdayOf = (dateStr) => {
-  const [y, m, d] = dateStr.split('-').map(Number);
-  return new Date(Date.UTC(y, m - 1, d)).getUTCDay();
-};
-export const fyStartYear = (fy) => 2000 + fy - 1;      // FY27 -> Oct 2026
-export const fyOfDate = (dateStr) => {
-  const [y, m] = dateStr.split('-').map(Number);
-  return (m >= 10 ? y + 1 : y) - 2000; // Oct-Dec belong to the following FY
-};
-
-/** The 12 (year, month) pairs of a financial year, Oct -> Sep. */
-export function fyMonths(fy) {
-  const sy = fyStartYear(fy);
-  const out = [];
-  for (let i = 0; i < 12; i++) {
-    const m = ((9 + i) % 12) + 1;
-    const y = i < 3 ? sy : sy + 1;
-    out.push({ year: y, month: m });
-  }
-  return out;
-}
-
-export const MONTH_NAMES = ['January','February','March','April','May','June','July','August','September','October','November','December'];
-
-/** Minutes between two "HH:MM" strings; handles a shift that crosses midnight. */
-export function minutesBetween(inT, outT) {
-  if (!inT || !outT) return 0;
-  const [ih, im] = inT.split(':').map(Number);
-  const [oh, om] = outT.split(':').map(Number);
-  let mins = oh * 60 + om - (ih * 60 + im);
-  if (mins < 0) mins += 24 * 60;
-  return mins;
-}
+import { MONTH_NAMES, daysInMonth, iso, fyMonths, minutesBetween } from '../public/lib/dates.js';
 
 const round2 = (n) => Math.round(n * 100) / 100;
 

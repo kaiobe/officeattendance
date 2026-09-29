@@ -14,6 +14,13 @@ services:
     pull_policy: build
     container_name: attendance_test
     restart: unless-stopped
+    # Hardening: no privilege escalation, no Linux capabilities (it listens on
+    # 8080 and writes only to /data, so it needs none), and a tiny init as PID 1.
+    init: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
     ports:
       - "8096:8080"
     environment:

@@ -1,0 +1,91 @@
+{
+  "source": "FY27_Office_Attendance__Kais_OWN.xlsx, sheets DAYS and HOURS, counted cell by cell (not from the sheet's own formulas, which miss day 31 in four months)",
+  "stdDayHours": 10.75,
+  "officeReqPct": 0.5,
+  "months": [
+    {
+      "name": "October",
+      "year": 2026,
+      "workDays": 18,
+      "officeDays": 9,
+      "officeHrs": 76.0
+    },
+    {
+      "name": "November",
+      "year": 2026,
+      "workDays": 14,
+      "officeDays": 7,
+      "officeHrs": 0.0
+    },
+    {
+      "name": "December",
+      "year": 2026,
+      "workDays": 13,
+      "officeDays": 7,
+      "officeHrs": 0.0
+    },
+    {
+      "name": "January",
+      "year": 2027,
+      "workDays": 11,
+      "officeDays": 6,
+      "officeHrs": 0.0
+    },
+    {
+      "name": "February",
+      "year": 2027,
+      "workDays": 16,
+      "officeDays": 8,
+      "officeHrs": 0.0
+    },
+    {
+      "name": "March",
+      "year": 2027,
+      "workDays": 17,
+      "officeDays": 9,
+      "officeHrs": 0.0
+    },
+    {
+      "name": "April",
+      "year": 2027,
+      "workDays": 2,
+      "officeDays": 1,
+      "officeHrs": 0.0
+    },
+    {
+      "name": "May",
+      "year": 2027,
+      "workDays": 8,
+      "officeDays": 4,
+      "officeHrs": 0.0
+    },
+    {
+      "name": "June",
+      "year": 2027,
+      "workDays": 18,
+      "officeDays": 9,
+      "officeHrs": 0.0
+    },
+    {
+      "name": "July",
+      "year": 2027,
+      "workDays": 18,
+      "officeDays": 9,
+      "officeHrs": 0.0
+    },
+    {
+      "name": "August",
+      "year": 2027,
+      "workDays": 4,
+      "officeDays": 2,
+      "officeHrs": 0.0
+    },
+    {
+      "name": "September",
+      "year": 2027,
+      "workDays": 0,
+      "officeDays": 0,
+      "officeHrs": 0.0
+    }
+  ]
+}

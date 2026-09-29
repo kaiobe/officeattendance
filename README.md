@@ -47,6 +47,18 @@ npm start                              # http://localhost:8080
 
 No npm dependencies — the server uses only Node built-ins, including `node:sqlite`.
 
+### Tests
+
+```bash
+npm test
+```
+
+Node's built-in test runner, still no dependencies. It checks every FY27 month against the
+original spreadsheet (counted cell by cell, in `test/fixtures/fy27-workbook.json`), the
+Victorian holidays against Business Victoria's published lists for 2025–2028, the whole API
+over a throwaway database with a clock the tests control — including what happens on
+1 October — and the version scheme.
+
 ---
 
 ## Environment
@@ -63,11 +75,18 @@ No npm dependencies — the server uses only Node built-ins, including `node:sql
 
 **Log a day** — pick a date (arrow keys ← → also move a day, ↑ ↓ a week), tap a code.
 It saves immediately. On an office day, *Standard day* fills your usual 07:30–17:00,
-or use *In now* / *Out now* to punch in and out live.
+or use *In now* / *Out now* to punch in and out live. Entering a time on a blank day, a
+weekend or a holiday saves it as an office day. An Out earlier than the In is counted as
+a shift across midnight, and flagged beside the hours in case it was a slip.
+
+A page left open overnight catches up by itself: when it comes back into view it checks
+the date with the server, so *In now* the next morning lands on the right day.
 
 **Grid** — the whole financial year, one row per month. Click any cell to load it into the
-log panel. **Shift-click** a second cell to select a range, then tap a code to apply it to
-all of them — that's how you block out a fortnight of long service leave in two clicks.
+log panel. **Shift-click** a second cell (or Shift + arrow keys) to select a range, then
+tap a code to apply it — that's how you block out a fortnight of long service leave in
+two clicks. A range recodes only the work days in it: weekends, public holidays and your
+non-working day are left as they are, so the leave doesn't inflate the day counts.
 A dot in the corner of a cell means hours are recorded; a small triangle means there's a comment.
 
 ## The calendar fills itself
@@ -81,33 +100,40 @@ The check is the calendar itself — a year missing any of its weekends hasn't b
 rather than a stored "done" marker, which can claim a year is finished when it never
 actually got filled. So a year that missed out corrects itself on the next load.
 
-### How far ahead the app goes
+### Which years the app offers
 
-The year picker runs from your earliest year with data up to a **horizon**, and stops.
-The horizon starts one year past the current financial year, and browsing never moves it —
-otherwise opening a future year would lay its calendar down, which would make it "have
-data", which would offer another year beyond it, and so on forever.
+The year picker runs from your earliest year with anything logged (or last year, while
+it's still laid out) to **one year past the current financial year**. That's worked out
+from today's date every time, so on 1 October the new year opens by itself and the one
+after it appears — nothing to do.
+
+Only logging moves it. Opening a future year lays its calendar down, but weekends and
+holidays alone don't count as data, so browsing never makes the list grow.
 
 Going further forward is deliberate: **Settings → Add FY29** (the button names the actual
-next year) moves the horizon on by one and lays that year out. Asking for a year past the
-horizon by URL is clamped rather than created.
+next year) takes it one year further and lays that year out.
 
-On startup the app removes calendars auto-generated beyond the horizon. That's strictly
+Going back, you can step one year before your earliest data — arrow back past 1 October —
+to backfill it. A year number from nowhere, like `?fy=1` in the address bar, opens the
+current year instead of laying down a calendar for 2001.
+
+On startup the app removes calendars nobody used outside that range. That's strictly
 limited to years holding nothing but weekends, non-working days and public holidays with
 no times against them — anything you logged is never touched, and a year with real entries
-stays reachable in the picker even if it sits past the horizon.
+is always in the picker.
 
 Precedence is **weekend → public holiday → non-working day**, matching the original
 spreadsheet: a public holiday that lands on your non-working Monday reads `PH`, and one
 that lands on a weekend stays `W`.
 
-Weekends are sticky. Clearing a Saturday puts `W` back rather than blanking it, so you
-can wipe a range of days without losing the shape of the calendar. Only weekdays clear
-to empty.
+Clearing never loses the shape of the calendar. A cleared day goes back to its calendar
+code: a Saturday reads `W` again, Melbourne Cup reads `PH`, your non-working Monday reads
+`NW`. Only an ordinary weekday clears to empty.
 
 **Fill weekends, public holidays & non-working days** (Settings) runs the same pass by
-hand — useful after changing your non-working weekday. It never overwrites a day you've
-already coded.
+hand. It never overwrites a day you've already coded. After you change your non-working
+weekday it also moves the `NW` days: from today on, untouched `NW` days on the old weekday
+go back to blank and the new weekday is filled. Earlier ones are history and stay.
 
 **Clear future days** (Settings, below it) wipes everything logged from tomorrow to the
 end of the financial year being viewed — a planned year you'd rather redo, say. Today and
@@ -186,6 +212,29 @@ Version mismatch: public/app.js says 1.1.0, package.json says 1.2.0 - run: npm r
 ```
 
 ---
+
+## Layout
+
+```
+server/
+  index.js      entry: environment, database, startup tidy, listen, clean shutdown
+  app.js        the routes, built by createApp({ db, today }) so tests can drive it
+  http.js       errors with status codes, JSON in and out, headers, static files
+  validate.js   every value from outside is checked here before it's stored
+  calendar.js   which years exist, the weekend / holiday / NW calendar, clearing
+  calc.js       the monthly rollups - mirrors the workbook
+  holidays.js   Victorian public holidays from their rules
+  codes.js      the attendance codes and what each one counts towards
+  csv.js        the CSV export
+  db.js         SQLite: schema, settings, days
+  version.js    release number and build stamp
+public/
+  app.js        entry point; holds APP_VERSION
+  js/           the page, one module per part: state, log card, tiles, grid, settings
+  lib/dates.js  calendar helpers shared by the server and the page - one copy, no build
+test/           npm test
+scripts/        bump.mjs (versions), test.mjs (test runner)
+```
 
 ## Codes
 
@@ -266,8 +315,32 @@ docker compose exec -T attendance wget -qO- http://127.0.0.1:8080/api/export.jso
 | `POST` | `/api/add-fy` | Move the horizon on one year and lay that year out |
 | `POST` | `/api/clear-future` | `{"fy":26}` — clear entries from tomorrow to that year's end |
 | `GET` | `/api/export.csv?fy=27` · `/api/export.json` | Exports |
-| `POST` | `/api/import` | Restore a backup |
+| `POST` | `/api/import` | Restore a backup — checked in full first, written in one transaction; returns `imported` and `skipped` |
 | `GET` | `/api/health` | Healthcheck, plus `version`, `build` and `buildUtc` |
 
-There is no authentication — it's built to sit on the tailnet, not the open internet.
-If you ever expose it, put it behind your reverse proxy's auth.
+Every change must be sent as `content-type: application/json` (415 otherwise), a bad value
+is a 400 that says what was wrong, the wrong method a 405, and an unexpected fault a 500
+with the detail in the server log.
+
+---
+
+## Security
+
+There is no login in the app itself — it relies on the reverse proxy in front of it.
+
+- **The published ports skip the proxy.** `8095:8080` and `8096:8080` let anyone who can
+  reach the host on those ports read and change everything without the proxy's password.
+  That's fine on a home LAN, and it's what makes `http://linuxserver:8095` work. If the host
+  is ever reachable from outside, bind them to one interface
+  (`"192.168.1.x:8095:8080"`) or remove them — the proxy reaches the container over the
+  Docker network regardless.
+- **Changes must be JSON.** A browser can't send `application/json` to another site without
+  a preflight this server never approves, so another page can't quietly post a form at the
+  API using the login your browser has saved. Requests the browser marks cross-site are
+  refused too.
+- **Headers.** Every response carries a Content-Security-Policy (scripts and styles from
+  this origin only, no framing), `nosniff`, `no-referrer`, and `no-store`.
+- **Exports.** CSV cells that start with `=`, `+`, `-` or `@` get a leading apostrophe, so a
+  comment can't run as a formula when the file is opened in Excel.
+- **Container.** Runs as a non-root user that can write only to `/data`, with no Linux
+  capabilities and no privilege escalation.

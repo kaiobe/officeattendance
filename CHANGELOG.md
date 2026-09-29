@@ -10,6 +10,49 @@ Versions are `MAJOR.MINOR.PATCH`:
 `npm run bump [major|minor|patch]` moves the number in every place it appears
 and opens an entry here. Nothing else should edit a version by hand.
 
+## 1.2.0 - 2026-09-29
+
+A full review and restructure, on the dev branch. The page looks the same to the pixel; the
+fixes are in what it does.
+
+**Behaviour you'll notice**
+- The year list moves with the date. From 1 October FY28 is offered and FY27 opens by
+  itself. Before, the stored horizon never moved, and on 1 Oct 2027 the app would have kept
+  opening FY27 - with "In now" writing to the same day a year earlier.
+- Clearing a day puts its calendar code back: Melbourne Cup reads PH again, your
+  non-working Monday NW. Only an ordinary weekday clears to empty.
+- Applying a code to a range recodes only the work days in it. Blocking out leave no longer
+  turns the weekends and public holidays inside the range into leave days, which inflated
+  Total Work Days.
+- After changing the non-working weekday, "Fill weekends…" moves the NW days from today on.
+- A time typed on a blank day, weekend or holiday saves it as Office, like the punch buttons.
+- A comment on a day with no code says to pick one, instead of disappearing.
+- An Out earlier than the In is flagged beside the hours.
+- A page left open overnight moves on to today when you come back to it.
+- Shift + arrow keys select a range.
+
+**Fixes**
+- A request for `//` crashed the server.
+- Impossible dates (2027-02-31), junk settings and out-of-range years are refused with a
+  message instead of being stored. A restore with bad settings changes nothing.
+- A URL like `?fy=1` no longer lays down calendars back to 2001 that nothing could remove.
+- Another website could post a form at the API using your saved proxy login; changes now
+  have to be sent as JSON.
+- Typing a comment while a save was finishing wiped it; a slow save could repaint the grid
+  with the year you'd just left; arrow keys moved the day behind an open question.
+- The CSV export without a year was named "fyundefined" and empty. Cells that look like
+  formulas are neutralised.
+- Security headers on every response; exports no longer cacheable.
+- The startup version-mismatch warning had lost its message.
+- The container stops cleanly, runs with no capabilities, and can't rewrite its own code.
+
+**Structure**
+- The server is split by job (routes, HTTP, validation, calendar, CSV) and the page into
+  modules under `public/js/`. Date helpers live once in `public/lib/dates.js`, shared by
+  both sides with no build step.
+- `npm test`: 53 checks with Node's own runner, including every FY27 month against the
+  spreadsheet and what happens on 1 October.
+
 ## 1.1.2 - 2026-09-29
 
 - The comment box no longer carries example text. It sits empty under its
