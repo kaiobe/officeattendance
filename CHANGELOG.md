@@ -10,6 +10,20 @@ Versions are `MAJOR.MINOR.PATCH`:
 `npm run bump [major|minor|patch]` moves the number in every place it appears
 and opens an entry here. Nothing else should edit a version by hand.
 
+## 1.7.0 - 2026-09-30
+
+- **The stale-version badge now fixes itself when clicked.** A cache in front of the app
+  (Nginx Proxy Manager's "Cache assets" does this) could keep serving the previous
+  release's JavaScript after a redeploy, ignoring the app's no-store header. A reload
+  couldn't get past it, so the badge stayed amber. The page now loads its code from an
+  address unique to each deploy (`/b/<version>-<build>/…`), which no cache has seen before.
+  The page itself is never cached, so it always points at the current build.
+- **The year list only shows years that matter:** any year with something logged in it,
+  this year, and the years ahead. A past year holding nothing but weekends and holidays
+  is no longer listed. You can still step back into one a month at a time to backfill.
+- **Add FY asks first,** so a misclick can't add a year. The question says which months it
+  lays out and that the year is added automatically on 1 October of the year before it.
+
 ## 1.6.0 - 2026-09-30
 
 - **Weekends can't be changed.** A Saturday or Sunday opens read-only: the code chips,

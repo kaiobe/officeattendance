@@ -29,19 +29,17 @@ const isLogged = (r) => !SKELETON_CODES.has(r.code) || r.in_time || r.out_time;
 export function yearSpan(db, settings, today) {
   const current = fyOfDate(today);
   const logged = new Set();
-  const stored = new Set();
   for (const r of getDaySummaries(db)) {
     if (!isRealDate(r.date)) continue;
-    const fy = fyOfDate(r.date);
-    stored.add(fy);
-    if (isLogged(r)) logged.add(fy);
+    if (isLogged(r)) logged.add(fyOfDate(r.date));
   }
   const manual = Number.isInteger(settings.lastFy) ? settings.lastFy : 0;
   const first = Math.min(current, ...logged);
   const last = Math.max(current + 1, manual, ...logged);
-  // The picker also keeps last year while it's still laid out, so the year
-  // just finished stays one click away after 1 October.
-  const listedFrom = Math.min(first, ...[...stored].filter((fy) => fy === current - 1));
+  // The picker lists only years that matter: any with something logged, this
+  // one, and those ahead. A past year holding nothing but the calendar isn't
+  // listed; it can still be reached a month at a time for backfilling.
+  const listedFrom = first;
   return {
     current, first, last, listedFrom,
     openable: (fy) => Number.isInteger(fy) && fy >= Math.min(first - 1, listedFrom) && fy <= last,

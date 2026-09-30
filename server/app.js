@@ -3,14 +3,15 @@
  * createApp so tests can drive it in-process with their own database and
  * their own idea of what day it is.
  */
+import { readFile } from 'node:fs/promises';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { getSettings, setSettings, getDays, getAllDays, upsertDay, deleteAllDays, transaction } from './db.js';
 import { buildSummary } from './calc.js';
 import { CODES } from './codes.js';
 import { unconfirmedHolidayYears } from './holidays.js';
-import { versionInfo } from './version.js';
-import { HttpError, json, download, readJson, serveStatic } from './http.js';
+import { versionInfo, VERSION, BUILD } from './version.js';
+import { HttpError, send, json, download, readJson, serveStatic } from './http.js';
 import { asFy, requireDate, parseDay, parseSettings } from './validate.js';
 import { SKELETON_CODES, fyBounds, yearSpan, availableFys, clearedValueFor, layCalendar, needsCalendar } from './calendar.js';
 import { toCsv } from './csv.js';
@@ -193,7 +194,10 @@ export function createApp({ db, today, tz = 'Australia/Melbourne', log = console
         if (methods.length) throw new HttpError(405, `use ${methods.join(' or ')}`);
         throw new HttpError(404, 'no such endpoint');
       }
-      await serveStatic(req, res, PUBLIC, path);
+      if (path === '/' || path === '/index.html') return await sendPage(req, res);
+      // /b/<build>/... is the same file as /...: see sendPage.
+      const pinned = path.match(/^\/b\/[^/]+(\/.+)$/);
+      await serveStatic(req, res, PUBLIC, pinned ? pinned[1] : path);
     } catch (err) {
       const status = err instanceof HttpError ? err.status : 500;
       if (status === 500) log.error(err);
@@ -201,6 +205,24 @@ export function createApp({ db, today, tz = 'Australia/Melbourne', log = console
       json(res, status, { error: status === 500 ? 'internal error - see the server log' : err.message });
     }
   };
+}
+
+/**
+ * The page, pointing at this build's own copy of the code. A proxy or CDN that
+ * caches .js and .css by extension - Nginx Proxy Manager's "Cache assets" does,
+ * ignoring the no-store header - would otherwise keep serving the previous
+ * release's JavaScript after a redeploy, and no reload could shake it off.
+ * Under /b/<version>-<build>/ every deploy's files have addresses no cache
+ * has seen, and the modules' relative imports stay inside the same prefix.
+ * The page itself is never cached, so it always names the current build.
+ */
+const BUILD_PREFIX = `/b/${VERSION}-${BUILD ?? 0}`;
+async function sendPage(req, res) {
+  if (req.method !== 'GET' && req.method !== 'HEAD') throw new HttpError(405, 'method not allowed');
+  const html = (await readFile(join(PUBLIC, 'index.html'), 'utf8'))
+    .replace('href="/styles.css"', `href="${BUILD_PREFIX}/styles.css"`)
+    .replace('src="/app.js"', `src="${BUILD_PREFIX}/app.js"`);
+  send(res, 200, { 'content-type': 'text/html; charset=utf-8' }, req.method === 'HEAD' ? '' : html);
 }
 
 function requireDateOrSkip(date) {

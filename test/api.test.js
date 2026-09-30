@@ -21,7 +21,15 @@ describe('the year span moves with the date', () => {
     app.clock.today = '2026-10-01';
     const s = await app.state();
     assert.equal(s.fy, 27);
-    assert.deepEqual(s.availableFys, [26, 27, 28]);
+    // FY26 holds nothing but the calendar, so it isn't listed
+    assert.deepEqual(s.availableFys, [27, 28]);
+  });
+
+  test('a past year with something logged in it stays listed', async () => {
+    await app.put('/api/days', { days: { '2026-09-15': { code: 'O', in: '08:00', out: '16:00' } } });
+    assert.deepEqual((await app.state()).availableFys, [26, 27, 28]);
+    await app.put('/api/days', { days: { '2026-09-15': null } });
+    assert.deepEqual((await app.state()).availableFys, [27, 28]);
   });
 
   test('a year later it still opens the current year - "In now" can never land a year back', async () => {
@@ -260,6 +268,29 @@ describe('protocol', () => {
       const r = await app.get(icon);
       assert.equal(r.status, 200, icon);
       assert.equal(r.headers.get('content-type'), 'image/png', icon);
+    }
+  });
+
+  test("the page loads this build's own copy of the code, so no cache in front can serve an old release", async () => {
+    const page = await app.get('/');
+    const { version } = (await app.get('/api/health')).json;
+    const js = page.text.match(/src="(\/b\/[^"]+)\/app\.js"/);
+    const css = page.text.match(/href="(\/b\/[^"]+)\/styles\.css"/);
+    assert.ok(js && css, 'app.js and styles.css are under /b/<build>/');
+    assert.equal(js[1], css[1]);
+    assert.ok(js[1].startsWith(`/b/${version}-`), js[1]);
+    assert.match(page.headers.get('cache-control'), /no-store/);
+    const pinned = await app.get(`${js[1]}/app.js`);
+    assert.equal(pinned.status, 200);
+    assert.equal(pinned.text, (await app.get('/app.js')).text);
+    assert.match(pinned.headers.get('content-type'), /javascript/);
+    // the modules' relative imports resolve inside the same prefix
+    assert.equal((await app.get(`${js[1]}/js/main.js`)).status, 200);
+    assert.equal((await app.get(`${js[1]}/lib/dates.js`)).status, 200);
+    // an older build's address still gets today's files, for a page left open
+    assert.equal((await app.get('/b/0.0.1-1/app.js')).text, pinned.text);
+    for (const p of ['/b/x/../../package.json', '/b/x/%2e%2e/%2e%2e/server/db.js', '/b/x/..%2f..%2fpackage.json']) {
+      assert.equal((await app.get(p)).status, 404, p);
     }
   });
 

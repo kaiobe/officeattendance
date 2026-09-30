@@ -174,8 +174,9 @@ actually got filled. So a year that missed out corrects itself on the next load.
 
 ### Which years the app offers
 
-The year picker runs from your earliest year with anything logged (or last year, while
-it's still laid out) to **one year past the current financial year**. That's worked out
+The year picker runs from your earliest year with anything logged (or this year, if
+there's nothing earlier) to **one year past the current financial year**. A past year
+holding nothing but the calendar isn't listed. That's worked out
 from today's date every time, so on 1 October the new year opens by itself and the one
 after it appears — nothing to do.
 
@@ -183,7 +184,8 @@ Only logging moves it. Opening a future year lays its calendar down, but weekend
 holidays alone don't count as data, so browsing never makes the list grow.
 
 Going further forward is deliberate: **Settings → Add FY29** (the button names the actual
-next year) takes it one year further and lays that year out.
+next year) takes it one year further and lays that year out. It asks first, so a misclick
+can't add a year.
 
 Going back, you can step one year before your earliest data — arrow back past 1 October —
 to backfill it. A year number from nowhere, like `?fy=1` in the address bar, opens the
@@ -260,7 +262,13 @@ two can only disagree when the browser is running older JavaScript than the
 server is serving — a cached page.
 
 When that happens the badge turns amber and reads `v1.1.0 → v1.2.0`. Click it
-and the page reloads past the cache. So a page that looks current *is* current,
+and the page reloads onto the current release.
+
+That reload works even with a cache in front of the app. Nginx Proxy Manager's *Cache
+assets*, or a CDN, can cache `.js` and `.css` by extension and ignore the app's no-store
+header. So the page (never cached) loads its code from `/b/<version>-<build>/app.js`, an
+address unique to each deploy. The modules' relative imports stay under the same prefix,
+and the server treats `/b/<anything>/x` as `/x`. So a page that looks current *is* current,
 which the old build timestamp couldn't promise: it changed on every deploy,
 including the ones that changed nothing, and it said nothing at all about the
 page you happened to be looking at.

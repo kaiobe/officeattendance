@@ -102,7 +102,18 @@ export function wireSettings() {
   });
   onThemeChange(showTheme);
 
+  // Adding a year can't be undone from here, and a stray tap would do it -
+  // so it asks first. The next year is listed on its own once the year
+  // before it starts, which the question says, since that's usually enough.
   $('addFy').onclick = () => report(async () => {
+    const next = S.lastFy + 1;
+    const ok = await askConfirm({
+      title: `Add FY${next}?`,
+      body: `This lays out Oct ${2000 + next - 1} – Sep ${2000 + next} with weekends, public holidays and your non-working day, `
+        + `and adds FY${next} to the year list for good. It's added on its own on 1 October ${2000 + next - 2}, so you only need this to plan further ahead.`,
+      ok: `Add FY${next}`,
+    });
+    if (!ok) return;
     const r = await api('/api/add-fy', { method: 'POST', body: '{}' });
     await loadState(r.lastFy);
     dlg.close();
