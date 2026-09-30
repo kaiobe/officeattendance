@@ -380,7 +380,7 @@ a { color: var(--accent); }
 .mcell.coded { box-shadow: none; }
 .mcell .d { position: absolute; left: 5px; top: 3px; font-size: 10.5px; font-weight: 560; opacity: .8; font-variant-numeric: tabular-nums; }
 .mcell .dot { position: absolute; right: 5px; bottom: 5px; width: 5px; height: 5px; border-radius: 50%; background: currentColor; opacity: .8; }
-.mcell.we { background: var(--surface-3); box-shadow: none; }
+.mcell.we { background: var(--surface-3); box-shadow: none; color: var(--text-2); font-weight: 500; }
 .mcell.plan { opacity: .55; }
 .mcell.today { box-shadow: 0 0 0 2px var(--surface-1), 0 0 0 4px var(--accent); opacity: 1; }
 .mcell.sel:not(.today) { box-shadow: 0 0 0 2px var(--surface-1), 0 0 0 4px var(--text-2); opacity: 1; }
@@ -469,6 +469,7 @@ a { color: var(--accent); }
 .chip .dot { background: currentColor; }
 
 /* Hours shown while some office days have no times: amber, with the reason on hover. */
+.cell button.we { font-weight: 500; }   /* weekends say W, quietly */
 td.stat.patchy, td.stat.patchy span { color: var(--warning); font-weight: 560; }
 
 /* Fit the year on a laptop: smaller day cells and tighter columns below the

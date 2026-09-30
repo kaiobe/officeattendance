@@ -52,7 +52,7 @@
           <button class="ghost" id="todayBtn">Today</button>
         </div>
         <button type="button" class="dayline" id="dayline" aria-label="Choose a date"></button>
-        <p class="keyhint" aria-hidden="true"><kbd>←</kbd> <kbd>→</kbd> a day &middot; <kbd>↑</kbd> <kbd>↓</kbd> a week &middot; <kbd>Shift</kbd> for a range</p>
+        <p class="keyhint" aria-hidden="true"><kbd>←</kbd> <kbd>→</kbd> a day &middot; <kbd>↑</kbd> <kbd>↓</kbd> a week &middot; <kbd>Shift</kbd> selects, and <kbd>↑</kbd> <kbd>↓</kbd> run to the week's end &middot; <kbd class="mod">Ctrl</kbd>-click picks days</p>
         <div class="rangenote" id="rangenote" hidden></div>
       </div>
 
@@ -125,7 +125,7 @@
   <section class="card tab-year" id="gridCard">
     <div class="card-head">
       <h2>FY<span id="fyLabel"></span> <span class="desk-only">grid</span><span class="phone-only">by month</span></h2>
-      <span class="note desk-only" id="gridHint">Click a day to edit<span class="shift-hint"> &middot; Shift-click to select a range</span></span>
+      <span class="note desk-only" id="gridHint">Click a day to edit<span class="shift-hint"> &middot; Shift-click for a range &middot; <span class="mod">Ctrl</span>-click to pick days</span></span>
       <div class="spacer desk-only"></div>
       <button class="ghost desk-only" id="hourColsBtn" aria-pressed="false">All hour columns</button>
     </div>

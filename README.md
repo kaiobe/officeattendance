@@ -89,11 +89,16 @@ A page left open overnight catches up by itself: when it comes back into view it
 the date with the server, so *In now* the next morning lands on the right day.
 
 **Grid** — the whole financial year, one row per month. Click any cell to load it into the
-log panel. **Shift-click** a second cell (or Shift + arrow keys) to select a range, then
-tap a code to apply it — that's how you block out a fortnight of long service leave in
-two clicks. A range recodes only the work days in it: weekends, public holidays and your
-non-working day are left as they are, so the leave doesn't inflate the day counts.
-A dot in the corner of a cell means hours are recorded; a small triangle means there's a comment.
+log panel. **Shift-click** a second cell to select a range, then tap a code to apply it.
+That's how you block out a fortnight of long service leave in two clicks. From the
+keyboard, **Shift+← →** extends a day at a time. **Shift+↓** runs to the end of the work
+week (the Friday) and **Shift+↑** back to its Monday; press again for another week.
+**Ctrl-click** (⌘-click on a Mac) picks any days you like: Ctrl-click again to drop one,
+or Ctrl+Shift-click to add a range.
+
+A range or a set of picked days recodes only the work days in it: weekends, public
+holidays and your non-working day are left as they are, so the leave doesn't inflate the
+day counts. Weekends show a quiet **W**. A dot in the corner of a cell means hours are recorded; a small triangle means there's a comment.
 Gaps to the target read in words — "20.75 short", "3.00 ahead" — the same way as the tiles.
 
 The grid fits the page at 1280px and wider. Under *Hours* it shows Office, Avg and

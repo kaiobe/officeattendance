@@ -87,11 +87,11 @@ function dayCell(m, d) {
   const def = rec ? S.codeMap[rec.code] : null;
   const selected = S.range.length > 1 ? S.range.includes(date) : date === S.sel;
   const style = def ? codeVars(def) : '';
-  const cls = [def ? 'code' : 'empty', selected ? 'sel' : '', date === S.today ? 'today' : ''].filter(Boolean).join(' ');
+  const cls = [def ? 'code' : 'empty', rec?.code === 'W' ? 'we' : '', selected ? 'sel' : '', date === S.today ? 'today' : ''].filter(Boolean).join(' ');
   const label = esc(describe(date, rec, def));
   return `<td class="cell"><button class="${cls}" style="${style}" data-date="${date}" title="${label}" aria-label="${label}"`
     + ` aria-pressed="${selected}"${date === S.today ? ' aria-current="date"' : ''}>`
-    + `${rec && rec.code !== 'W' ? rec.code : ''}${rec?.in && rec?.out ? '<span class="mark"></span>' : ''}${rec?.comment ? '<span class="cmt"></span>' : ''}</button></td>`;
+    + `${rec ? rec.code : ''}${rec?.in && rec?.out ? '<span class="mark"></span>' : ''}${rec?.comment ? '<span class="cmt"></span>' : ''}</button></td>`;
 }
 
 /** What a cell says to a screen reader, for other views too. */
@@ -125,7 +125,7 @@ export function renderGrid(onPick) {
   const focused = document.activeElement?.closest?.('#cal button[data-date]')?.dataset.date;
   $('cal').innerHTML = head + body;
   $('cal').querySelectorAll('button[data-date]').forEach((b) => {
-    b.onclick = (e) => onPick(b.dataset.date, e.shiftKey);
+    b.onclick = (e) => onPick(b.dataset.date, e.shiftKey, e.ctrlKey || e.metaKey);
   });
   if (focused) $('cal').querySelector(`button[data-date="${focused}"]`)?.focus({ preventScroll: true });
 }

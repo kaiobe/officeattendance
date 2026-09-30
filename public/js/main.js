@@ -8,7 +8,7 @@ import { renderLog, wireLog, punch } from './log.js';
 import { renderGrid, renderLegend, renderKeyTotals, renderGridNote, renderYearList, allHourCols, setAllHourCols } from './grid.js';
 import { renderMonth, wireMonth, showMonth, endSelecting } from './month.js';
 import { wireSettings } from './settings.js';
-import { addDays, datesBetween, fyOfDate } from '../lib/dates.js';
+import { addDays, datesBetween, fyOfDate, weekdayOf } from '../lib/dates.js';
 
 let APP_VERSION = '';
 
@@ -56,8 +56,29 @@ function renderAll() {
   renderLegend();
 }
 
-/** Select a day; with extend, select the range from the last plain pick to here. */
-function selectDate(date, extend = false) {
+/**
+ * Select a day. With extend (Shift), select the range from the last plain pick
+ * to here. With toggle (Ctrl, or Cmd on a Mac), add the day to the selection
+ * or take it out again, so any mix of days can be picked; Ctrl+Shift adds a
+ * range to what's already picked.
+ */
+function selectDate(date, extend = false, toggle = false) {
+  if (toggle && fyOfDate(date) === S.fy) {
+    const picked = new Set(S.range.length > 1 ? S.range : [S.sel]);
+    if (extend && S.anchor) {
+      const [a, b] = [S.anchor, date].sort();
+      datesBetween(a, b).forEach((d) => picked.add(d));
+    } else if (picked.has(date) && picked.size > 1) {
+      picked.delete(date);
+    } else {
+      picked.add(date);
+    }
+    S.range = [...picked].sort();
+    S.sel = picked.has(date) ? date : S.range[S.range.length - 1];
+    if (!extend) S.anchor = S.sel;
+    if (S.range.length === 1) S.range = [];
+    return renderAll();
+  }
   if (extend && S.anchor) {
     const [a, b] = [S.anchor, date].sort();
     S.range = datesBetween(a, b);
@@ -68,6 +89,17 @@ function selectDate(date, extend = false) {
   S.sel = date;
   if (fyOfDate(date) !== S.fy) return attempt(() => loadState(fyOfDate(date)));
   renderAll();
+}
+
+/**
+ * Shift+Down runs the selection on to the end of the work week - the Friday
+ * before the next weekend - and Shift+Up back to its Monday. From a Friday
+ * (or Monday going up) it goes a further week. Never more than 7 days a step.
+ */
+function weekEdge(date, dir) {
+  const wd = weekdayOf(date);                     // 0 Sunday ... 6 Saturday
+  if (dir > 0) return addDays(date, wd === 5 ? 7 : wd === 6 ? 6 : 5 - wd);
+  return addDays(date, wd === 1 ? -7 : wd === 0 ? -6 : 1 - wd);
 }
 
 /* ---------- phone tabs ---------- */
@@ -160,6 +192,8 @@ export async function boot(appVersion) {
   renderThemeButton();
   onThemeChange(renderThemeButton);
   $('themeBtn').onclick = cycleTheme;
+  // On a Mac the multi-pick key is Cmd.
+  if (/Mac|iPhone|iPad/.test(navigator.platform)) document.querySelectorAll('.mod').forEach((e) => { e.textContent = '⌘'; });
   wireMenu();
   wireTiles();
   wireLog({ rerender: renderAll });
@@ -187,7 +221,9 @@ export async function boot(appVersion) {
     if (!(e.key in STEP) || anyDialogOpen() || e.altKey || e.ctrlKey || e.metaKey) return;
     if (['INPUT', 'SELECT', 'TEXTAREA'].includes(e.target.tagName)) return;
     e.preventDefault();
-    selectDate(addDays(S.sel, STEP[e.key]), e.shiftKey);
+    const vertical = e.key === 'ArrowUp' || e.key === 'ArrowDown';
+    const to = e.shiftKey && vertical ? weekEdge(S.sel, STEP[e.key]) : addDays(S.sel, STEP[e.key]);
+    selectDate(to, e.shiftKey);
   });
 
   document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') catchUpWithToday(); });

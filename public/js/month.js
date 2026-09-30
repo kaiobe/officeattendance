@@ -130,7 +130,7 @@ export function renderMonth() {
     const label = esc(describe(date, rec, def));
     const pressed = sel.on ? ` aria-pressed="${inRange.has(date)}"` : '';
     html += `<button class="${cls}"${style} data-day="${date}" aria-label="${label}"${pressed}${date === S.today ? ' aria-current="date"' : ''}>`
-      + `<span class="d">${d}</span>${def && !weekend ? rec.code : ''}${rec?.in && rec?.out ? '<span class="dot"></span>' : ''}</button>`;
+      + `<span class="d">${d}</span>${weekend ? 'W' : def ? rec.code : ''}${rec?.in && rec?.out ? '<span class="dot"></span>' : ''}</button>`;
   }
   $('mGrid').innerHTML = html;
   $('mGrid').querySelectorAll('button[data-day]').forEach((b) => {

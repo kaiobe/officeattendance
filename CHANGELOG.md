@@ -10,6 +10,19 @@ Versions are `MAJOR.MINOR.PATCH`:
 `npm run bump [major|minor|patch]` moves the number in every place it appears
 and opens an entry here. Nothing else should edit a version by hand.
 
+## 1.5.0 - 2026-09-30
+
+- **Shift+↓** now selects to the end of the work week, the Friday before the next
+  weekend, and **Shift+↑** back to its Monday. Pressing again goes a further week.
+  Before, it jumped exactly 7 days, which selected 8 (Monday to Monday). Plain ↑ ↓ still
+  move a week, and Shift+← → still move a day.
+- **Ctrl-click** (⌘-click on a Mac) picks any mix of days on the grid. Ctrl-click a
+  picked day to take it out, and Ctrl+Shift-click to add a range. A code then goes on
+  the picked work days. Weekends, holidays and non-working days are left alone, as with
+  a range.
+- Weekends show **W** in the grid and the phone's month view, in a quieter weight than
+  the other codes.
+
 ## 1.4.1 - 2026-09-30
 
 - Settings › Appearance: "Match device" no longer spills out of its button on a phone.
