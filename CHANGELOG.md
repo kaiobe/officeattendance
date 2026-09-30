@@ -10,6 +10,14 @@ Versions are `MAJOR.MINOR.PATCH`:
 `npm run bump [major|minor|patch]` moves the number in every place it appears
 and opens an entry here. Nothing else should edit a version by hand.
 
+## 1.6.0 - 2026-09-30
+
+- **Weekends can't be changed.** A Saturday or Sunday opens read-only: the code chips,
+  times, comment and punch button are disabled, with a note saying why. Ranges and
+  Ctrl-picks skip weekends whatever code is applied, including Public holiday and
+  Non-working day, which used to recode them. The server refuses a weekend change too,
+  and a restore puts a plain W on any weekend the backup has something else on.
+
 ## 1.5.0 - 2026-09-30
 
 - **Shift+↓** now selects to the end of the work week, the Friday before the next

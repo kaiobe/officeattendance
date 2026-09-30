@@ -498,6 +498,8 @@ td.stat.patchy, td.stat.patchy span { color: var(--warning); font-weight: 560; }
 .logcol.what { grid-area: what; border-right: 0; padding: 0 0 0 22px; }
 .logcol.hours .times { margin-top: 0; }
 .comment-field { margin-top: 14px; }
+.locknote { margin: 0 0 12px; padding: 8px 12px; border-radius: 9px; background: var(--surface-2); border: 1px solid var(--border); font-size: 13px; color: var(--text-2); }
+#logCard.locked :is(.chip, .punch, .tiny, input):disabled { opacity: .45; cursor: not-allowed; }
 button.dayline { display: block; border: 0; background: none; padding: 0; text-align: left; cursor: pointer; color: inherit; font: inherit; font-size: 20px; font-weight: 620; letter-spacing: -.015em; }
 button.dayline:hover .dl-long { text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 3px; }
 button.dayline:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 4px; }

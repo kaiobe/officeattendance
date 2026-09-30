@@ -96,6 +96,9 @@ describe('writing days', () => {
     ['a malformed date', { '26-10-21': { code: 'O' } }, /bad date/],
     ['an unknown code', { '2026-10-21': { code: 'ZZ' } }, /unknown code/],
     ['a bad time', { '2026-10-21': { code: 'O', in: '7:30' } }, /HH:MM/],
+    ['a code on a Saturday', { '2026-10-10': { code: 'O' } }, /weekend/],
+    ['times on a Sunday', { '2026-10-11': { code: 'W', in: '09:00', out: '12:00' } }, /weekend/],
+    ['a comment on a weekend', { '2026-10-10': { code: 'W', comment: 'x' } }, /weekend/],
   ]) {
     test(`${what} is refused`, async () => {
       const r = await app.put('/api/days', { days });
@@ -104,8 +107,20 @@ describe('writing days', () => {
     });
   }
 
+  test('weekends are never changed: a request touching one changes nothing at all', async () => {
+    const before = (await app.state(27)).days;
+    const r = await app.put('/api/days', { days: { '2026-10-15': { code: 'L' }, '2026-10-17': { code: 'O' } } });
+    assert.equal(r.status, 400);
+    const { days } = await app.state(27);
+    assert.deepEqual(days['2026-10-15'], before['2026-10-15']);
+    assert.equal(days['2026-10-17'].code, 'W');
+    // A plain W, or clearing (which puts W back), is accepted - it changes nothing.
+    assert.equal((await app.put('/api/days', { days: { '2026-10-17': { code: 'W' }, '2026-10-18': null } })).status, 200);
+    assert.deepEqual((await app.state(27)).days['2026-10-18'], { code: 'W', in: null, out: null, comment: null });
+  });
+
   test('clearing puts the calendar back: weekend W, public holiday PH, non-working day NW, weekday empty', async () => {
-    await app.put('/api/days', { days: { '2026-10-10': { code: 'O' }, '2026-11-03': { code: 'L' }, '2026-10-12': { code: 'O' }, '2026-10-14': { code: 'O' } } });
+    await app.put('/api/days', { days: { '2026-11-03': { code: 'L' }, '2026-10-12': { code: 'O' }, '2026-10-14': { code: 'O' } } });
     await app.put('/api/days', { days: { '2026-10-10': null, '2026-11-03': null, '2026-10-12': null, '2026-10-14': null } });
     const { days } = await app.state(27);
     assert.equal(days['2026-10-10'].code, 'W');
@@ -166,6 +181,14 @@ describe('settings and restore', () => {
     assert.equal(r.status, 200);
     assert.equal(r.json.skipped, 1);
     assert.equal((await app.state(27)).days['2026-12-01'].code, 'H');
+  });
+
+  test('a backup that has something on a weekend restores it as a plain W', async () => {
+    const backup = (await app.get('/api/export.json')).json;
+    backup.days['2026-12-05'] = { code: 'O', in: '09:00', out: '12:00', comment: 'Saturday shift' };
+    const r = await app.post('/api/import', backup);
+    assert.equal(r.status, 200);
+    assert.deepEqual((await app.state(27)).days['2026-12-05'], { code: 'W', in: null, out: null, comment: null });
   });
 
   test('changing the non-working weekday and filling moves NW days from today on', async () => {

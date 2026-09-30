@@ -14,7 +14,7 @@ import { HttpError, json, download, readJson, serveStatic } from './http.js';
 import { asFy, requireDate, parseDay, parseSettings } from './validate.js';
 import { SKELETON_CODES, fyBounds, yearSpan, availableFys, clearedValueFor, layCalendar, needsCalendar } from './calendar.js';
 import { toCsv } from './csv.js';
-import { addDays } from '../public/lib/dates.js';
+import { addDays, isWeekend } from '../public/lib/dates.js';
 
 const PUBLIC = join(dirname(fileURLToPath(import.meta.url)), '..', 'public');
 
@@ -40,9 +40,20 @@ export function createApp({ db, today, tz = 'Australia/Melbourne', log = console
     throw new HttpError(400, `FY${fy} is outside the years this app manages (FY${span.first - 1}-FY${span.last})`);
   }
 
-  function writeDays(entries, settings, { replace = false } = {}) {
+  /**
+   * Store days. Weekends aren't worked, so a Saturday or Sunday is always the
+   * calendar's plain W: an edit to one is refused, and a restore puts W back
+   * whatever the backup says (strict: false).
+   */
+  function writeDays(entries, settings, { replace = false, strict = true } = {}) {
     const cleared = clearedValueFor(settings);
-    const clean = entries.map(([date, rec]) => [date, parseDay(rec, date, cleared)]);
+    const clean = entries.map(([date, rec]) => {
+      const day = parseDay(rec, date, cleared);
+      if (!isWeekend(date)) return [date, day];
+      const plainW = day.code === 'W' && !day.in && !day.out && !day.comment;
+      if (strict && !plainW) throw new HttpError(400, `${date} is a weekend - weekends can't be changed`);
+      return [date, cleared(date)];
+    });
     transaction(db, () => {
       if (replace) deleteAllDays(db);
       for (const [date, rec] of clean) upsertDay(db, date, rec);
@@ -157,7 +168,7 @@ export function createApp({ db, today, tz = 'Australia/Melbourne', log = console
       const all = Object.entries(body.days && typeof body.days === 'object' ? body.days : {});
       const entries = all.filter(([date]) => requireDateOrSkip(date));
       const settings = { ...getSettings(db), ...settingsPatch };
-      const imported = writeDays(entries, settings, { replace: body.replace === true });
+      const imported = writeDays(entries, settings, { replace: body.replace === true, strict: false });
       setSettings(db, settingsPatch);
       return { imported, skipped: all.length - entries.length };
     },

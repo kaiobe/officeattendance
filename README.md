@@ -81,8 +81,11 @@ the current time until there's an In time, then *Out now*. Punching codes the da
 A line under the button confirms what was saved, with *Undo* to put the day back exactly
 as it was. While you're in, the hours beside the times count up ("3 h 18 m so far").
 
-Entering a time on a blank day, a weekend or a holiday also saves it as an office day. An
-Out earlier than the In is counted as a shift across midnight, and flagged beside the
+Entering a time on a blank day, a holiday or your non-working day also saves it as an office
+day. **Weekends can't be changed at all**: a Saturday or Sunday opens read-only, the server
+refuses edits to one, and a restore puts W back on them.
+
+An Out earlier than the In is counted as a shift across midnight, and flagged beside the
 hours in case it was a slip.
 
 A page left open overnight catches up by itself: when it comes back into view it checks

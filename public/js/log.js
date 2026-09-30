@@ -2,7 +2,7 @@
 import { S, saveDays } from './state.js';
 import { $, longDate, shortDate, nowHHMM, fmtHrs, plural, codeVars } from './format.js';
 import { askConfirm, flash } from './dialogs.js';
-import { DAY_NAMES, weekdayOf, minutesBetween } from '../lib/dates.js';
+import { DAY_NAMES, weekdayOf, minutesBetween, isWeekend } from '../lib/dates.js';
 
 /** Codes the calendar puts down by itself - not something you log. */
 const CALENDAR = new Set(['W', 'NW', 'PH']);
@@ -43,16 +43,25 @@ export function renderLog() {
     $('clearRange').onclick = () => { S.range = []; rerender(); };
   }
 
+  // Weekends aren't worked: nothing on a Saturday or Sunday can be changed.
+  // A range or set of picks that merely includes one still works - the
+  // weekend days in it are skipped.
+  const weekend = isWeekend(date);
+  const locked = weekend && !multi;
+  $('logCard').classList.toggle('locked', weekend);
+  $('lockNote').hidden = !locked;
+  for (const id of ['inTime', 'outTime', 'comment', 'stdTimes', 'clearTimes']) $(id).disabled = weekend;
+
   const groups = [['work', 'Work'], ['leave', 'Leave'], ['off', 'Not a work day']];
   $('chipzone').innerHTML = groups.map(([g, title]) => `
     <div class="chipgroup"><div class="glabel">${title}</div><div class="chips">
       ${S.codes.filter((c) => c.group === g).map((c) => `
-        <button class="chip code" data-code="${c.code}" aria-pressed="${rec.code === c.code && !multi}"
+        <button class="chip code" data-code="${c.code}" aria-pressed="${rec.code === c.code && !multi}"${locked ? ' disabled' : ''}
           style="${codeVars(c)}">
           <span class="dot"></span>${c.label}
         </button>`).join('')}
     </div></div>`).join('') +
-    '<div class="chipgroup"><div class="chips"><button class="chip clear" data-code="">Clear day</button></div></div>';
+    `<div class="chipgroup"><div class="chips"><button class="chip clear" data-code=""${locked ? ' disabled' : ''}>Clear day</button></div></div>`;
   $('chipzone').querySelectorAll('.chip').forEach((b) => { b.onclick = () => applyCode(b.dataset.code); });
 
   fill('inTime', rec.in || '', sameDay);
@@ -95,12 +104,14 @@ function punchMode() {
 
 function updatePunch() {
   const mode = punchMode(), now = nowHHMM(), b = $('punchBtn');
-  const label = mode === 'in' ? 'In now' : 'Out now';
+  const weekend = isWeekend(S.sel);
+  b.disabled = weekend;
+  const label = weekend ? 'Weekend' : mode === 'in' ? 'In now' : 'Out now';
   b.classList.toggle('out', mode === 'out');
   b.classList.toggle('again', mode === 'again');
   $('punchLabel').textContent = label;
-  $('punchTime').textContent = now;
-  b.setAttribute('aria-label', `${label}, ${now}`);
+  $('punchTime').textContent = weekend ? '' : now;
+  b.setAttribute('aria-label', weekend ? 'Weekend: no punching in' : `${label}, ${now}`);
 }
 
 let punchedTimer, undoPunch = null;
@@ -118,6 +129,8 @@ function showPunched(text, undo) {
   punchedTimer = setTimeout(hidePunched, 10000);
 }
 
+const weekendRefused = () => { flash("Weekends aren't work days, so they can't be changed", true); return false; };
+
 const fields = () => ({ in: $('inTime').value || null, out: $('outTime').value || null, comment: $('comment').value || null });
 
 /**
@@ -127,6 +140,7 @@ const fields = () => ({ in: $('inTime').value || null, out: $('outTime').value |
  * one of those, or the range is being cleared.
  */
 async function applyCode(code) {
+  if (S.range.length <= 1 && isWeekend(S.sel)) return weekendRefused();
   if (S.range.length <= 1) return saveDays({ [S.sel]: code === '' ? null : { code, ...fields() } });
   return applyCodeTo(S.range, code);
 }
@@ -136,8 +150,10 @@ async function applyCode(code) {
  * touch in the month view. Each day keeps its own times and comment.
  */
 export async function applyCodeTo(dates, code) {
+  // Weekends are never changed. Holidays and non-working days are spared too,
+  // unless it's one of those codes being put down, or the range being cleared.
   const spares = code !== '' && !CALENDAR.has(code);
-  const targets = dates.filter((d) => !(spares && CALENDAR.has(S.days[d]?.code)));
+  const targets = dates.filter((d) => !isWeekend(d) && !(spares && CALENDAR.has(S.days[d]?.code)));
   const skipped = dates.length - targets.length;
   if (!targets.length) { flash('Nothing to change - every day in the range is a weekend, holiday or non-working day', true); return false; }
   const payload = {};
@@ -155,6 +171,7 @@ export async function applyCodeTo(dates, code) {
  * office, so it's saved as O.
  */
 function saveCurrent() {
+  if (isWeekend(S.sel)) return weekendRefused();
   const rec = S.days[S.sel];
   const f = fields();
   if (!rec || CALENDAR.has(rec.code)) {
@@ -201,6 +218,7 @@ async function onTimeEdited(which) {
  * Undo puts the day back exactly as it was.
  */
 export async function punch() {
+  if (isWeekend(S.sel)) return weekendRefused();
   const which = punchMode() === 'in' ? 'in' : 'out';
   const field = which === 'in' ? 'inTime' : 'outTime', label = which === 'in' ? 'In' : 'Out';
   const now = nowHHMM(), current = $(field).value;
