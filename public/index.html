@@ -36,6 +36,10 @@
 </header>
 
 <div class="wrap">
+  <div class="nudge" id="backupNudge" role="status" hidden>
+    <span id="nudgeText">Your attendance is only on this phone. Save a backup so a lost or reset phone doesn't lose it.</span>
+    <span class="nudge-acts"><button class="primary" id="nudgeBackup">Back up now</button><button class="ghost" id="nudgeLater">Later</button></span>
+  </div>
   <section class="card tab-today" id="logCard">
     <div class="card-head">
       <h2>Log a day</h2>
@@ -193,6 +197,10 @@
             <option value="4">Thursday</option><option value="5">Friday</option>
           </select>
         </div>
+        <div class="set-row">
+          <label for="setState">Public holidays</label>
+          <select id="setState"></select>
+        </div>
         <div class="set-row hours-row">
           <span id="stdHoursLbl">Standard hours</span>
           <span class="set-in">
@@ -202,7 +210,7 @@
           </span>
         </div>
       </div>
-      <p class="set-hint" id="nwHint" hidden>Your non-working day changed. <b>Refill weekends and holidays</b> below moves the NW days from today on.</p>
+      <p class="set-hint info" id="calHint" role="status" hidden></p>
     </section>
 
     <section class="set-sec" aria-labelledby="secLook">
@@ -218,7 +226,7 @@
       <h3 id="secYears">Years and calendar</h3>
       <div class="set-list">
         <button class="set-item" id="addFy"><span class="set-item-t"><span id="addFyLabel">Add next year</span><small id="addFyNote"></small></span></button>
-        <button class="set-item" id="fillSkeleton"><span class="set-item-t"><span>Refill weekends and holidays</span><small>Fills blank days, and moves non-working days from today on</small></span></button>
+        <button class="set-item" id="fillSkeleton"><span class="set-item-t"><span>Refill weekends and holidays</span><small>Fills blank days in this year with weekends, public holidays and non-working days</small></span></button>
         <button class="set-item danger" id="clearFuture"><span class="set-item-t"><span>Clear future days</span><small id="clearFutureNote">Tomorrow to the end of the year · asks first</small></span></button>
       </div>
     </section>
@@ -231,11 +239,56 @@
         <button class="ghost" id="importBtn">Restore&hellip;</button>
         <input type="file" id="importFile" accept="application/json" hidden>
       </div>
+      <p class="set-note" id="storageNote" hidden></p>
     </section>
 
     <p class="dlg-err" id="settingsErr" role="alert"></p>
-    <p class="note">Work days for the requirement = Office + Home; working sick is counted in the key totals under the grid, not in the percentage. Office hours count only on Office days. Data lives in <code>/data/attendance.db</code> on the container's volume.</p>
+    <p class="note">Work days for the requirement = Office + Home; working sick is counted in the key totals under the grid, not in the percentage. Office hours count only on Office days. <span id="dataWhere">Data lives in <code>/data/attendance.db</code> on the container's volume.</span></p>
     <p class="note" id="settingsVersion"></p>
+  </div>
+</dialog>
+
+<dialog id="welcomeDlg" aria-labelledby="welcomeTitle">
+  <div class="card-head"><h2 id="welcomeTitle">Office Attendance</h2></div>
+  <div class="dlg-body">
+    <p class="welcome-lead">Track your office days and hours across the October to September year. Everything stays on this phone: there's no account, and nothing is sent anywhere.</p>
+    <div class="set-rows">
+      <div class="set-row">
+        <label for="wState">Public holidays</label>
+        <select id="wState"></select>
+      </div>
+      <div class="set-row">
+        <label for="wNw">Day off each week</label>
+        <select id="wNw">
+          <option value="-1">None (5-day week)</option>
+          <option value="1">Monday</option><option value="2">Tuesday</option><option value="3">Wednesday</option>
+          <option value="4">Thursday</option><option value="5">Friday</option>
+        </select>
+      </div>
+      <div class="set-row">
+        <label for="wStd">Standard day</label>
+        <span class="set-in"><input type="number" id="wStd" step="0.25" min="0.25" max="24" inputmode="decimal"><span class="unit">h</span></span>
+      </div>
+      <div class="set-row">
+        <label for="wReq">Office target</label>
+        <span class="set-in"><input type="number" id="wReq" step="1" min="0" max="100" inputmode="numeric"><span class="unit">%</span></span>
+      </div>
+      <div class="set-row hours-row">
+        <span>Usual hours</span>
+        <span class="set-in">
+          <input type="time" id="wIn" aria-label="Usual start">
+          <span class="unit">–</span>
+          <input type="time" id="wOut" aria-label="Usual finish">
+        </span>
+      </div>
+    </div>
+    <p class="note">You can change any of these later in Settings.</p>
+    <p class="dlg-err" id="welcomeErr" role="alert"></p>
+    <div class="actions">
+      <button class="primary" id="welcomeStart">Start</button>
+      <button class="ghost" id="welcomeRestore">Restore a backup&hellip;</button>
+    </div>
+    <p class="note install-tip" id="installTip">Add it to your home screen so it opens like an app and keeps your data safe: on iPhone, Share &rsaquo; <b>Add to Home Screen</b>; on Android, the menu &rsaquo; <b>Install app</b>.</p>
   </div>
 </dialog>
 

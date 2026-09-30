@@ -61,6 +61,78 @@ over a throwaway database with a clock the tests control — including what happ
 
 ---
 
+## The standalone version (for colleagues)
+
+The same app, built as a static site that runs entirely in the browser. Each
+person's days and settings are stored on their own phone. There's no server,
+no Docker and no account, and nothing is sent anywhere. It's built from the same
+code as the server version, so fixes land in both.
+
+### Putting it on Cloudflare
+
+Cloudflare hosts it for free from the private repo. `wrangler.jsonc` in the repo
+tells it to publish the built `dist/` folder as a static site, with no server code.
+
+1. In the Cloudflare dashboard, go to **Workers & Pages › Create application** and pick
+   the Git repository option. Sign in to GitHub, give Cloudflare access to
+   `kaiobe/officeattendance` only, and select it.
+2. On **Set up your application**:
+   - **Project name:** `officeattendance`. It must match `name` in `wrangler.jsonc`.
+   - **Build command:** `npm run build:standalone`
+   - **Deploy command:** `npx wrangler deploy` (the default)
+   - **Preview command:** `npx wrangler preview` (the default)
+   - Leave **Enable Preview builds** on and **Protect with Cloudflare Access** off.
+3. **Deploy.** It builds from `main`, so merge dev into main first. The address is
+   `officeattendance.<your-subdomain>.workers.dev`. Share that with your colleagues,
+   or add your own domain under the Worker's **Settings › Domains & Routes**.
+
+Every push to `main` redeploys. Pushes to other branches, like `dev`, get their own
+preview address, so you can try changes before they reach anyone.
+
+Cloudflare Pages works too: **Create application › Pages › Connect to Git**, with build
+command `npm run build:standalone` and output directory `dist`.
+
+To build it yourself: `npm run build:standalone` writes the site to `dist/`, and any
+static file server can host it.
+
+### What your colleagues see
+
+- **First visit:** a setup screen asks for their public holiday state (guessed from the
+  phone's time zone), day off each week, standard day, office target and usual hours.
+  A new phone starts on a 5-day, 7.6-hour week. **Restore a backup…** on that screen
+  moves someone to a new phone.
+- **After that:** it's the same app you use, with the tabs, punch button, month view and
+  year grid. Backups and CSV exports go to the phone's share sheet (Files, Drive, email),
+  or a normal download on a computer.
+- **Offline:** once opened, it works with no signal. Updates arrive the next time it's
+  opened with a connection.
+
+### Keeping their data safe
+
+Browser storage can be cleared. iPhones in particular may clear a website's data if
+it goes unused for a few weeks, unless it's been added to the home screen. So the app:
+
+- asks the browser to keep its storage permanently, and Settings › Backup says whether
+  it agreed;
+- shows home-screen instructions on the setup screen when it's open in a browser tab;
+- shows a reminder at the top of the page a week after starting with no backup, and a
+  month after the last backup. **Later** puts it off for a week.
+
+The backup file is the only copy outside the phone. It's the same format as the server
+version's, so a colleague's backup could be restored into a server copy too.
+
+### How it's put together
+
+The logic that doesn't need Node lives in `public/core/`: calculations, holidays,
+calendar, validation, and `service.js`, which is the whole API as plain function
+calls. The server wraps that service in HTTP over SQLite (`server/app.js`). The
+standalone version (`public/local/`) calls it directly over `localStorage`. Both
+supply the same store interface, so there's one copy of every rule.
+`scripts/build-standalone.mjs` copies `public/` to `dist/`, points the page at
+`standalone.js`, and adds a service worker and Cloudflare's `_headers`.
+
+---
+
 ## Environment
 
 | Variable | Default | Notes |
@@ -141,7 +213,8 @@ version. The version badge only appears in the header when the page is stale.
 Settings has four sections:
 
 - **Working pattern** saves each field as you change it. A value the server refuses is
-  explained and put back.
+  explained and put back. It includes the public holiday state. Changing the state or the
+  non-working day moves the calendar's own days from today on, and says how many moved.
 - **Appearance** sets the theme.
 - **Years and calendar** adds a year, refills weekends and holidays, and clears future days.
 - **Backup** has CSV export, the JSON backup and restore.
@@ -217,15 +290,26 @@ the exact range and day count before it commits.
 
 ### Public holidays
 
-Victorian public holidays are computed from the rules that define them (second Monday in
-March, first Tuesday in November, Easter, and the weekend substitution rules), so they're
-correct for any year without a lookup table to maintain. Verified against Business
-Victoria's published listings for 2025 through 2028, and against the nine public holidays
-in the original FY27 spreadsheet — which they reproduce exactly.
+Public holidays come from the rules that define them (second Monday in March, first
+Tuesday in November, Easter, the weekend substitute rules), so they're correct for any
+year with no table to maintain. **Settings › Public holidays** picks the state or
+territory, and changing it moves the calendar's holidays from today on. Days before
+today, and anything you've logged, stay as they were. Changing the non-working day
+moves NW days the same way.
+
+Every state and territory is checked against the Fair Work Ombudsman's 2026 and 2027
+lists. Victoria is also checked against Business Victoria's lists for 2025 to 2028, and
+against the nine holidays in the original FY27 spreadsheet.
+
+Some holidays make no difference to work days, so they're left out: evening-only ones
+(Christmas Eve and New Year's Eve from 6 or 7 pm in Queensland, SA and the NT) and
+Tasmania's public-service Easter Tuesday. Where holidays differ by region, the capital's
+are used: Brisbane's Ekka, Hobart's Regatta and Show. A day that's wrong where you are can
+be coded `PH` by hand, or cleared.
 
 The exception is **AFL Grand Final Friday**. Victoria sets it each year once the AFL
 releases its schedule, so it can't be derived. Confirmed dates live in
-`AFL_GRAND_FINAL_FRIDAY` in `server/holidays.js` (2025 and 2026 so far). Any year without
+`AFL_GRAND_FINAL_FRIDAY` in `public/core/holidays.js` (2025 and 2026 so far). Any Victorian year without
 one shows a note under the grid instead of a guessed date — add the year and date to that
 object when it's announced, or just code the day `PH` by hand.
 
@@ -298,23 +382,26 @@ Version mismatch: public/app.js says 1.1.0, package.json says 1.2.0 - run: npm r
 ```
 server/
   index.js      entry: environment, database, startup tidy, listen, clean shutdown
-  app.js        the routes, built by createApp({ db, today }) so tests can drive it
-  http.js       errors with status codes, JSON in and out, headers, static files
-  validate.js   every value from outside is checked here before it's stored
-  calendar.js   which years exist, the weekend / holiday / NW calendar, clearing
-  calc.js       the monthly rollups - mirrors the workbook
-  holidays.js   Victorian public holidays from their rules
-  codes.js      the attendance codes and what each one counts towards
-  csv.js        the CSV export
-  db.js         SQLite: schema, settings, days
+  app.js        HTTP around the shared service, the page and its files
+  http.js       JSON in and out, security headers, static files
+  db.js         SQLite: schema, settings, days, and the store the service uses
   version.js    release number and build stamp
 public/
   app.js        entry point; holds APP_VERSION
+  standalone.js entry point for the standalone version
   js/           the page, one module per part: state, log card, tiles, grid, month, settings, theme
+  core/         shared by the server and the standalone version:
+    service.js    the API as plain calls - every route's logic
+    calendar.js   which years exist, the weekend / holiday / NW calendar
+    holidays.js   public holidays for every state and territory, from their rules
+    calc.js       the monthly rollups - mirrors the workbook
+    validate.js   every value from outside is checked here before it's stored
+    codes.js, csv.js, settings.js, errors.js
+  local/        the standalone version: localStorage store, first run, backups, offline
   manifest.webmanifest, icons/   what makes it installable on a phone
-  lib/dates.js  calendar helpers shared by the server and the page - one copy, no build
+  lib/dates.js  calendar helpers shared by everything - one copy, no build
 test/           npm test
-scripts/        bump.mjs (versions), test.mjs (test runner)
+scripts/        bump.mjs (versions), test.mjs (test runner), build-standalone.mjs
 ```
 
 ## Codes

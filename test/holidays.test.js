@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { vicPublicHolidays, easterSunday, unconfirmedHolidayYears } from '../server/holidays.js';
+import { vicPublicHolidays, publicHolidays, holidaysBetween, easterSunday, unconfirmedHolidayYears, STATES } from '../public/core/holidays.js';
 
 // Written out by hand from Business Victoria's published lists, so the rules
 // are checked against the source rather than against themselves. A holiday on
@@ -38,4 +38,83 @@ test('an unannounced AFL Grand Final Friday is reported, never guessed', () => {
   assert.equal(vicPublicHolidays(2027).some((h) => h.name.includes('AFL')), false);
   assert.deepEqual(unconfirmedHolidayYears('2026-10-01', '2027-09-30'), [2027]);
   assert.deepEqual(unconfirmedHolidayYears('2025-10-01', '2026-09-30'), []);
+});
+
+// Every state and territory, written out by hand from the Fair Work Ombudsman's
+// 2026 and 2027 lists. Weekdays only: a holiday on a weekend changes nothing,
+// since weekends are W anyway. Evening-only holidays (Christmas Eve and New
+// Year's Eve from 6 or 7 pm), Tasmania's public-service Easter Tuesday and the
+// regional days outside each capital are left out - see holidays.js.
+const WEEKDAYS = {
+  ACT: {
+    2026: ['01-01', '01-26', '03-09', '04-03', '04-06', '04-27', '06-01', '06-08', '10-05', '12-25', '12-28'],
+    2027: ['01-01', '01-26', '03-08', '03-26', '03-29', '04-26', '05-31', '06-14', '10-04', '12-27', '12-28'],
+    // ACT Government 2028 list: New Year's Day on a Saturday gives Monday 3 January
+    2028: ['01-03', '01-26', '03-13', '04-14', '04-17', '04-25', '05-29', '06-12', '10-02', '12-25', '12-26'],
+  },
+  NSW: {
+    2026: ['01-01', '01-26', '04-03', '04-06', '04-27', '06-08', '10-05', '12-25', '12-28'],
+    2027: ['01-01', '01-26', '03-26', '03-29', '04-26', '06-14', '10-04', '12-27', '12-28'],
+  },
+  NT: {
+    2026: ['01-01', '01-26', '04-03', '04-06', '05-04', '06-08', '08-03', '12-25', '12-28'],
+    2027: ['01-01', '01-26', '03-26', '03-29', '04-26', '05-03', '06-14', '08-02', '12-27', '12-28'],
+  },
+  QLD: {
+    2026: ['01-01', '01-26', '04-03', '04-06', '05-04', '08-12', '10-05', '12-25', '12-28'],
+    2027: ['01-01', '01-26', '03-26', '03-29', '04-26', '05-03', '08-11', '10-04', '12-27', '12-28'],
+  },
+  SA: {
+    2026: ['01-01', '01-26', '03-09', '04-03', '04-06', '06-08', '10-05', '12-25', '12-28'],
+    2027: ['01-01', '01-26', '03-08', '03-26', '03-29', '06-14', '10-04', '12-27', '12-28'],
+  },
+  TAS: {
+    2026: ['01-01', '01-26', '02-09', '03-09', '04-03', '04-06', '06-08', '10-22', '12-25', '12-28'],
+    2027: ['01-01', '01-26', '02-08', '03-08', '03-26', '03-29', '06-14', '10-21', '12-27', '12-28'],
+  },
+  VIC: {
+    2026: ['01-01', '01-26', '03-09', '04-03', '04-06', '06-08', '09-25', '11-03', '12-25', '12-28'],
+    2027: ['01-01', '01-26', '03-08', '03-26', '03-29', '06-14', '11-02', '12-27', '12-28'],
+  },
+  WA: {
+    2026: ['01-01', '01-26', '03-02', '04-03', '04-06', '04-27', '06-01', '09-28', '12-25', '12-28'],
+    2027: ['01-01', '01-26', '03-01', '03-26', '03-29', '04-26', '06-07', '09-27', '12-27', '12-28'],
+  },
+};
+
+const isWeekday = (d) => ![0, 6].includes(new Date(`${d}T00:00:00Z`).getUTCDay());
+
+test('every state and territory is covered', () => {
+  assert.deepEqual(Object.keys(WEEKDAYS).sort(), Object.keys(STATES).sort());
+});
+
+for (const [state, years] of Object.entries(WEEKDAYS)) {
+  for (const [year, dates] of Object.entries(years)) {
+    test(`${state} ${year}: weekday public holidays match the published list`, () => {
+      const got = publicHolidays(Number(year), state).map((h) => h.date).filter(isWeekday);
+      assert.deepEqual(got, dates.map((d) => `${year}-${d}`));
+    });
+  }
+}
+
+test('ANZAC Day on a weekend: a Monday in NSW, the ACT and WA; on a Sunday also Queensland and the NT; never Victoria, SA or Tasmania', () => {
+  const monday = (year, state) => publicHolidays(year, state).some((h) => h.name === 'ANZAC Day (substitute)');
+  // 2026: Saturday. 2027: Sunday.
+  assert.deepEqual(Object.keys(STATES).filter((s) => monday(2026, s)), ['ACT', 'NSW', 'WA']);
+  assert.deepEqual(Object.keys(STATES).filter((s) => monday(2027, s)), ['ACT', 'NSW', 'NT', 'QLD', 'WA']);
+});
+
+test('holidaysBetween and the AFL note follow the chosen state', () => {
+  const fy27 = ['2026-10-01', '2027-09-30'];
+  assert.equal(holidaysBetween(...fy27, 'VIC')['2026-11-03'].name, 'Melbourne Cup Day');
+  assert.equal(holidaysBetween(...fy27, 'NSW')['2026-11-03'], undefined);
+  assert.equal(holidaysBetween(...fy27, 'NSW')['2026-10-05'].name, 'Labour Day');
+  assert.deepEqual(unconfirmedHolidayYears(...fy27, 'NSW'), []);
+  assert.deepEqual(unconfirmedHolidayYears(...fy27, 'VIC'), [2027]);
+  assert.throws(() => publicHolidays(2027, 'XX'), /unknown state/);
+});
+
+test('the Ekka moves to the second Friday week when August starts late in the week', () => {
+  // 2028: the first Friday is the 4th, before the 5th, so the show opens on the 11th
+  assert.ok(publicHolidays(2028, 'QLD').some((h) => h.date === '2028-08-16' && h.name.startsWith('Royal Queensland Show')));
 });

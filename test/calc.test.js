@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { buildSummary, summarise } from '../server/calc.js';
+import { buildSummary, summarise } from '../public/core/calc.js';
 import { DEFAULT_SETTINGS } from '../server/db.js';
 
 const seed = JSON.parse(readFileSync(new URL('../server/seed-fy27.json', import.meta.url)));

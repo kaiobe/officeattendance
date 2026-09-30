@@ -5,8 +5,8 @@
 import { createServer } from 'node:http';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { openDb, getSettings, seedIfEmpty } from './db.js';
-import { yearSpan, tidyYears } from './calendar.js';
+import { openDb, getSettings, seedIfEmpty, sqliteStore } from './db.js';
+import { yearSpan, tidyYears } from '../public/core/calendar.js';
 import { VERSION, versionDrift } from './version.js';
 import { createApp } from './app.js';
 
@@ -27,7 +27,8 @@ if (seeded) console.log(`Seeded ${seeded} days from the FY27 spreadsheet.`);
 const drift = versionDrift();
 if (drift) console.warn(`Version mismatch: ${drift}`);
 
-const removed = tidyYears(db, yearSpan(db, getSettings(db), today()));
+const store = sqliteStore(db);
+const removed = tidyYears(store, yearSpan(store, getSettings(db), today()));
 if (removed) console.log(`Removed ${removed} unused calendar days from financial years outside the app's range.`);
 
 const server = createServer(createApp({ db, today, tz: TZ }));

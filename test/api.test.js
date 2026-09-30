@@ -2,8 +2,8 @@ import { test, describe, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { request } from 'node:http';
 import { startApp } from './helpers.js';
-import { getSettings, upsertDay } from '../server/db.js';
-import { yearSpan, tidyYears } from '../server/calendar.js';
+import { getSettings, upsertDay, sqliteStore } from '../server/db.js';
+import { yearSpan, tidyYears } from '../public/core/calendar.js';
 
 describe('the year span moves with the date', () => {
   let app;
@@ -80,10 +80,11 @@ describe('years outside the span', () => {
   });
 
   test('unused calendars outside the span are tidied away', () => {
-    const span = yearSpan(app.db, getSettings(app.db), '2026-09-29');
+    const store = sqliteStore(app.db);
+    const span = yearSpan(store, getSettings(app.db), '2026-09-29');
     upsertDay(app.db, '2030-01-05', { code: 'W' });
     upsertDay(app.db, '2025.5-10-03', { code: 'W' });
-    const removed = tidyYears(app.db, span);
+    const removed = tidyYears(store, span);
     assert.ok(removed >= 2);
   });
 });
@@ -172,7 +173,7 @@ describe('settings and restore', () => {
   test('built-in object keys are not settings', async () => {
     await app.put('/api/settings', JSON.parse('{"constructor":"x","toString":"y","__proto__":{"fy":"99"}}'));
     const s = (await app.state()).settings;
-    assert.deepEqual(Object.keys(s).sort(), ['defaultIn', 'defaultOut', 'lastFy', 'nonWorkingWeekday', 'officeReqPct', 'stdDayHours']);
+    assert.deepEqual(Object.keys(s).sort(), ['defaultIn', 'defaultOut', 'holidayState', 'lastFy', 'nonWorkingWeekday', 'officeReqPct', 'stdDayHours']);
   });
 
   test('a backup with bad settings is refused whole - nothing is written', async () => {
@@ -197,6 +198,48 @@ describe('settings and restore', () => {
     const r = await app.post('/api/import', backup);
     assert.equal(r.status, 200);
     assert.deepEqual((await app.state(27)).days['2026-12-05'], { code: 'W', in: null, out: null, comment: null });
+  });
+
+  test('switching state moves the public holidays from today on, and leaves history and logged days alone', async () => {
+    const fresh = await startApp({ seed: false, today: '2026-10-20' });
+    try {
+      await fresh.state(27);                                   // laid out for Victoria, Monday NW
+      await fresh.put('/api/days', { days: { '2027-03-08': { code: 'L' } } });   // leave on Victoria's Labour Day
+      const r = await fresh.put('/api/settings', { holidayState: 'nsw' });
+      assert.equal(r.status, 200);
+      assert.equal(r.json.settings.holidayState, 'NSW');
+      assert.ok(r.json.moved > 0);
+      const { days, unconfirmedHolidayYears } = await fresh.state(27);
+      assert.equal(days['2026-11-03'], undefined);             // Melbourne Cup: gone
+      assert.equal(days['2026-10-05'].code, 'NW');             // NSW Labour Day, but before today: history stays
+      assert.equal(days['2027-04-26'].code, 'PH');             // NSW's ANZAC Day Monday
+      assert.equal(days['2027-04-26'].comment, 'ANZAC Day (substitute)');
+      assert.equal(days['2027-03-08'].code, 'L');              // logged: untouched
+      assert.equal(days['2027-10-04'], undefined);             // FY28 isn't laid out yet
+      assert.deepEqual(unconfirmedHolidayYears, []);          // no AFL note outside Victoria
+      const fy28 = (await fresh.state(28)).days;               // laid out fresh, for NSW
+      assert.equal(fy28['2027-10-04'].code, 'PH');             // NSW Labour Day 2027 (a Monday: PH beats NW)
+    } finally { await fresh.stop(); }
+  });
+
+  test('an unknown state is refused', async () => {
+    const r = await app.put('/api/settings', { holidayState: 'Narnia' });
+    assert.equal(r.status, 400);
+    assert.match(r.json.error, /state must be one of ACT, NSW/);
+  });
+
+  test('changing the non-working weekday moves NW days from today on by itself', async () => {
+    const fresh = await startApp({ seed: false, today: '2026-10-14' });
+    try {
+      await fresh.state(27);
+      const r = await fresh.put('/api/settings', { nonWorkingWeekday: 3 });
+      assert.ok(r.json.moved > 0);
+      const { days } = await fresh.state(27);
+      assert.equal(days['2026-10-12'].code, 'NW');             // a past Monday stays
+      assert.equal(days['2026-10-19'], undefined);             // a future Monday is a work day again
+      assert.equal(days['2026-10-21'].code, 'NW');             // a future Wednesday
+      assert.equal(days['2026-10-07'], undefined);             // a past Wednesday stays blank: history isn't rewritten
+    } finally { await fresh.stop(); }
   });
 
   test('changing the non-working weekday and filling moves NW days from today on', async () => {

@@ -10,6 +10,34 @@ Versions are `MAJOR.MINOR.PATCH`:
 `npm run bump [major|minor|patch]` moves the number in every place it appears
 and opens an entry here. Nothing else should edit a version by hand.
 
+## 1.8.0 - 2026-09-30
+
+**A standalone version for colleagues.** The same app as a static site that runs
+entirely in the browser, with each person's data on their own phone. No server, no
+Docker, no account. `npm run build:standalone` builds it into `dist/`, and Cloudflare
+hosts it from the private repo, set up by `wrangler.jsonc` (see README, "The standalone version").
+- A first-run setup asks for the public holiday state (guessed from the phone's time
+  zone), day off, standard day, office target and usual hours. **Restore a backup…**
+  there moves someone to a new phone.
+- Backups and CSV exports go to the phone's share sheet, or a normal download on a
+  computer.
+- Works offline once opened. Updates arrive the next time it's opened with signal.
+- Asks the browser to keep its data permanently, and Settings says whether it agreed.
+  A reminder appears a week in with no backup, and a month after the last one.
+
+**Public holidays for every state and territory.** Settings › Public holidays picks
+ACT, NSW, NT, Queensland, SA, Tasmania, Victoria or WA. Each is checked against the Fair
+Work Ombudsman's 2026 and 2027 lists. Where holidays differ by region, the capital's are
+used: Brisbane's Ekka, Hobart's Regatta and Show. Your copy stays on Victoria.
+
+**Changing the non-working day or the state now moves the calendar by itself** from
+today on, and says how many days moved. Before, you had to press Refill afterwards. Days
+before today, and anything you've logged, are left alone.
+
+Under the hood, the server's logic moved to `public/core/` so both versions share it.
+`server/app.js` is now a thin HTTP layer over `public/core/service.js`. The server's API
+responses are unchanged apart from the new `holidayState` setting and a `moved` count.
+
 ## 1.7.0 - 2026-09-30
 
 - **The stale-version badge now fixes itself when clicked.** A cache in front of the app

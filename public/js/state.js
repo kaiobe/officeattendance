@@ -16,7 +16,23 @@ const listeners = new Set();
 export const subscribe = (fn) => listeners.add(fn);
 const changed = (why) => listeners.forEach((fn) => fn(why));
 
+/**
+ * How the page is being run. The server version leaves this alone and talks
+ * to /api over the network. The standalone version (public/local/) fills it
+ * in before the page starts: `transport` answers the same API calls in the
+ * browser, and the hooks run its first-run setup and backup reminders.
+ */
+export const runtime = {
+  local: false,
+  appVersion: '',
+  transport: null,        // (method, path, body) => result, throwing Error on refusal
+  beforeLoad: null,       // async, before the first loadState
+  afterLoad: null,        // after the first loadState
+  saveFile: null,         // (path) => save or share an export
+};
+
 export async function api(path, opts = {}) {
+  if (runtime.transport) return runtime.transport(opts.method || 'GET', path, opts.body ? JSON.parse(opts.body) : {});
   const res = await fetch(path, { ...opts, headers: { 'content-type': 'application/json', ...opts.headers } });
   const body = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(body.error || `HTTP ${res.status}`);

@@ -4,10 +4,11 @@
  * value is refused with a 400 that says what was wrong, never coerced into
  * something plausible and stored.
  */
-import { HttpError } from './http.js';
+import { HttpError } from './errors.js';
 import { VALID } from './codes.js';
-import { isRealDate } from '../public/lib/dates.js';
-import { isSettingKey } from './db.js';
+import { isRealDate } from '../lib/dates.js';
+import { isSettingKey } from './settings.js';
+import { STATES } from './holidays.js';
 
 const bad = (msg) => new HttpError(400, msg);
 
@@ -71,6 +72,11 @@ const RULES = {
     const n = Number(v);
     if (!Number.isInteger(n) || n < 1 || n > 99) throw bad('lastFy must be a financial year number');
     return n;
+  },
+  holidayState: (v) => {
+    const k = String(v ?? '').toUpperCase();
+    if (!Object.hasOwn(STATES, k)) throw bad(`state must be one of ${Object.keys(STATES).join(', ')}`);
+    return k;
   },
   defaultIn: (v) => { if (!isTime(v)) throw bad('default in time must be HH:MM'); return v; },
   defaultOut: (v) => { if (!isTime(v)) throw bad('default out time must be HH:MM'); return v; },

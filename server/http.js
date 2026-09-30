@@ -4,14 +4,9 @@
  */
 import { readFile, stat } from 'node:fs/promises';
 import { join, extname, sep } from 'node:path';
+import { HttpError } from '../public/core/errors.js';
 
-/** An error that knows its status code. Anything else thrown is a 500. */
-export class HttpError extends Error {
-  constructor(status, message) {
-    super(message);
-    this.status = status;
-  }
-}
+export { HttpError };
 
 export const MAX_BODY = 4 * 1024 * 1024;
 

@@ -1,6 +1,6 @@
 {
   "name": "office-attendance",
-  "version": "1.7.0",
+  "version": "1.8.0",
   "private": true,
   "type": "module",
   "description": "Self-hosted office attendance tracker (days + hours) for an Oct-Sep financial year",
@@ -8,7 +8,10 @@
   "scripts": {
     "start": "node server/index.js",
     "bump": "node scripts/bump.mjs",
-    "test": "node scripts/test.mjs"
+    "test": "node scripts/test.mjs",
+    "build:standalone": "node scripts/build-standalone.mjs"
   },
-  "engines": { "node": ">=22.5" }
+  "engines": {
+    "node": ">=22.5"
+  }
 }

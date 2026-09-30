@@ -2,19 +2,11 @@ import { DatabaseSync } from 'node:sqlite';
 import { readFileSync, mkdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { DEFAULT_SETTINGS, isSettingKey } from '../public/core/settings.js';
+
+export { DEFAULT_SETTINGS, isSettingKey };
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-
-export const DEFAULT_SETTINGS = Object.freeze({
-  lastFy: null,           // furthest FY added by hand with "Add FY"; null = none
-  stdDayHours: 10.75,     // 43 hr week over 4 days
-  officeReqPct: 0.5,      // 50% office requirement
-  nonWorkingWeekday: 1,   // 0=Sun ... 1=Mon. -1 = none (5 day week)
-  defaultIn: '07:30',
-  defaultOut: '17:00',
-});
-
-export const isSettingKey = (k) => Object.hasOwn(DEFAULT_SETTINGS, k);
 
 export function openDb(file) {
   mkdirSync(dirname(file), { recursive: true });
@@ -120,6 +112,25 @@ export function upsertDay(db, date, rec) {
 
 export const deleteDaysBetween = (db, from, to) => stmt(db, 'DELETE FROM days WHERE date >= ? AND date <= ?').run(from, to);
 export const deleteAllDays = (db) => stmt(db, 'DELETE FROM days').run();
+
+/**
+ * The database behind the store interface the shared code uses (see
+ * public/core/service.js). The standalone app has the same methods over the
+ * browser's own storage, so the two can't drift apart.
+ */
+export function sqliteStore(db) {
+  return {
+    getSettings: () => getSettings(db),
+    setSettings: (patch) => setSettings(db, patch),
+    getDays: (from, to) => getDays(db, from, to),
+    getAllDays: () => getAllDays(db),
+    getDaySummaries: () => getDaySummaries(db),
+    upsertDay: (date, rec) => upsertDay(db, date, rec),
+    deleteDaysBetween: (from, to) => { deleteDaysBetween(db, from, to); },
+    deleteAllDays: () => { deleteAllDays(db); },
+    transaction: (fn) => transaction(db, fn),
+  };
+}
 
 /** One-time import of the FY27 spreadsheet data on an empty database. */
 export function seedIfEmpty(db, seedFile = join(HERE, 'seed-fy27.json')) {

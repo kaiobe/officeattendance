@@ -10,3 +10,6 @@ npm-debug.log*
 Thumbs.db
 .env
 .env.*
+
+# the standalone build (npm run build:standalone)
+dist/

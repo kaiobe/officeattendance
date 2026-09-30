@@ -1,5 +1,5 @@
 /** Start-up and the page-wide wiring: rendering, day selection, tabs, keys, theme, version. */
-import { S, subscribe, loadState, serverToday } from './state.js';
+import { S, subscribe, loadState, serverToday, runtime } from './state.js';
 import { $, builtAt as builtAtOf } from './format.js';
 import { initTheme, cycleTheme, getTheme, onThemeChange, THEMES, THEME_LABEL, ICON } from './theme.js';
 import { anyDialogOpen, attempt } from './dialogs.js';
@@ -187,6 +187,7 @@ function handleShortcut() {
 
 export async function boot(appVersion) {
   APP_VERSION = appVersion;
+  runtime.appVersion = appVersion;
   subscribe(renderAll);
   initTheme();
   renderThemeButton();
@@ -229,7 +230,18 @@ export async function boot(appVersion) {
   document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') catchUpWithToday(); });
   window.addEventListener('focus', catchUpWithToday);
 
+  // The standalone version saves exports on the device instead of following the links.
+  if (runtime.saveFile) {
+    document.addEventListener('click', (e) => {
+      const a = e.target.closest?.('a[href^="/api/export"]');
+      if (!a) return;
+      e.preventDefault();
+      attempt(() => runtime.saveFile(a.getAttribute('href')));
+    });
+  }
+
   try {
+    if (runtime.beforeLoad) await runtime.beforeLoad();
     await loadState();
   } catch (e) {
     const p = document.createElement('p');
@@ -243,4 +255,5 @@ export async function boot(appVersion) {
     return;
   }
   handleShortcut();
+  if (runtime.afterLoad) runtime.afterLoad();
 }

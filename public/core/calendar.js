@@ -3,9 +3,8 @@
  * the app goes, and the weekends / public holidays / non-working days that
  * every year is laid out with before anything is logged.
  */
-import { getDays, getDaySummaries, upsertDay, deleteDaysBetween, transaction } from './db.js';
 import { holidaysBetween } from './holidays.js';
-import { fyOfDate, fyStart, fyEnd, fyMonths, daysInMonth, iso, weekdayOf, isWeekend, isRealDate, datesBetween } from '../public/lib/dates.js';
+import { fyOfDate, fyStart, fyEnd, fyMonths, daysInMonth, iso, weekdayOf, isWeekend, isRealDate, datesBetween } from '../lib/dates.js';
 
 /** Codes the calendar lays down by itself. A year holding only these has nothing logged in it. */
 export const SKELETON_CODES = new Set(['W', 'NW', 'PH']);
@@ -26,10 +25,10 @@ const isLogged = (r) => !SKELETON_CODES.has(r.code) || r.in_time || r.out_time;
  * year at a time is how you'd backfill; jumping to FY1 by URL is not, and is
  * refused rather than laying down a calendar nobody asked for.
  */
-export function yearSpan(db, settings, today) {
+export function yearSpan(store, settings, today) {
   const current = fyOfDate(today);
   const logged = new Set();
-  for (const r of getDaySummaries(db)) {
+  for (const r of store.getDaySummaries()) {
     if (!isRealDate(r.date)) continue;
     if (isLogged(r)) logged.add(fyOfDate(r.date));
   }
@@ -79,7 +78,7 @@ function skeletonRecord(date, settings, holidays, keepComment = null) {
 export function clearedValueFor(settings) {
   const byYear = new Map();
   const holidaysIn = (year) => {
-    if (!byYear.has(year)) byYear.set(year, holidaysBetween(`${year}-01-01`, `${year}-12-31`));
+    if (!byYear.has(year)) byYear.set(year, holidaysBetween(`${year}-01-01`, `${year}-12-31`, settings.holidayState));
     return byYear.get(year);
   };
   return (date) => skeletonRecord(date, settings, holidaysIn(date.slice(0, 4)));
@@ -87,27 +86,33 @@ export function clearedValueFor(settings) {
 
 /**
  * Lay the calendar down over a financial year. Fills blank days only unless
- * overwrite is set. With reapplyFrom, a non-working day left on a weekday that
- * is no longer your non-working one - because the setting changed - goes back
- * to blank from that date on; earlier ones are history and stay.
+ * overwrite is set. With reapplyFrom, the calendar's own days from that date
+ * on - NW and PH with no times against them - are brought in line with the
+ * current settings: a non-working day no longer on your non-working weekday
+ * goes, a public holiday of the state you've moved from goes, and the new ones
+ * take their place. Earlier days are history and stay; weekends are W either
+ * way, and anything you logged is never touched. onlyFrom leaves every
+ * earlier day alone entirely, blank ones included.
  */
-export function layCalendar(db, fy, settings, { overwrite = false, reapplyFrom = null } = {}) {
+export function layCalendar(store, fy, settings, { overwrite = false, reapplyFrom = null, onlyFrom = null } = {}) {
   const [from, to] = fyBounds(fy);
-  const existing = getDays(db, from, to);
-  const holidays = holidaysBetween(from, to);
+  const existing = store.getDays(from, to);
+  const holidays = holidaysBetween(from, to, settings.holidayState);
   let changed = 0;
-  transaction(db, () => {
+  store.transaction(() => {
     for (const date of datesBetween(from, to)) {
+      if (onlyFrom && date < onlyFrom) continue;
       const prev = existing[date];
-      const want = skeletonRecord(date, settings, holidays, prev?.comment);
+      const want = skeletonRecord(date, settings, holidays, prev?.code === 'PH' ? null : prev?.comment);
+      const ours = prev && (prev.code === 'NW' || prev.code === 'PH') && !prev.in && !prev.out;
+      const reapply = reapplyFrom && date >= reapplyFrom && ours;
       if (!want) {
-        const stale = reapplyFrom && date >= reapplyFrom && prev?.code === 'NW' && !prev.in && !prev.out;
-        if (stale) { upsertDay(db, date, null); changed++; }
+        if (reapply) { store.upsertDay(date, null); changed++; }
         continue;
       }
-      if (prev && !overwrite) continue;
       if (prev && prev.code === want.code) continue;
-      upsertDay(db, date, want);
+      if (prev && !overwrite && !reapply) continue;
+      store.upsertDay(date, want);
       changed++;
     }
   });
@@ -120,9 +125,9 @@ export function layCalendar(db, fy, settings, { overwrite = false, reapplyFrom =
  * marker, which could claim "done" for a year that never actually got filled.
  * Weekends can be recoded but never cleared, so once filled this stays settled.
  */
-export function needsCalendar(db, fy) {
+export function needsCalendar(store, fy) {
   const [from, to] = fyBounds(fy);
-  const existing = getDays(db, from, to);
+  const existing = store.getDays(from, to);
   return datesBetween(from, to).some((d) => isWeekend(d) && !existing[d]);
 }
 
@@ -133,13 +138,13 @@ export function needsCalendar(db, fy) {
  * weekends, public holidays and non-working days with no times against them.
  * Rows with impossible dates, which only an old bug could create, go too.
  */
-export function tidyYears(db, span) {
+export function tidyYears(store, span) {
   const byFy = new Map();
   let removed = 0;
-  transaction(db, () => {
-    for (const r of getDaySummaries(db)) {
+  store.transaction(() => {
+    for (const r of store.getDaySummaries()) {
       if (!isRealDate(r.date)) {
-        if (!isLogged(r)) { upsertDay(db, r.date, null); removed++; }
+        if (!isLogged(r)) { store.upsertDay(r.date, null); removed++; }
         continue;
       }
       const fy = fyOfDate(r.date);
@@ -150,7 +155,7 @@ export function tidyYears(db, span) {
       if (fy >= span.current - 1 && fy <= span.last) continue;   // this year, last year, and ahead
       if (rows.some(isLogged)) continue;
       const [from, to] = fyBounds(fy);
-      deleteDaysBetween(db, from, to);
+      store.deleteDaysBetween(from, to);
       removed += rows.length;
     }
   });

@@ -1,0 +1,11 @@
+// Cloudflare Workers config for the standalone version: a static site, no
+// Worker script. Cloudflare runs `npm run build:standalone`, then
+// `npx wrangler deploy` publishes dist/. The name must match the Worker's
+// name in the Cloudflare dashboard. See README, "The standalone version".
+{
+  "name": "officeattendance",
+  "compatibility_date": "2026-09-30",
+  "assets": {
+    "directory": "./dist"
+  }
+}

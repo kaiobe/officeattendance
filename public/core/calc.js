@@ -1,5 +1,5 @@
 import { CODE_MAP } from './codes.js';
-import { MONTH_NAMES, daysInMonth, iso, fyMonths, minutesBetween } from '../public/lib/dates.js';
+import { MONTH_NAMES, daysInMonth, iso, fyMonths, minutesBetween } from '../lib/dates.js';
 
 const round2 = (n) => Math.round(n * 100) / 100;
 

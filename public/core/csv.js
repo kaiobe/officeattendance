@@ -1,4 +1,4 @@
-import { MONTH_NAMES, DAY_NAMES, parseIso, weekdayOf, minutesBetween } from '../public/lib/dates.js';
+import { MONTH_NAMES, DAY_NAMES, parseIso, weekdayOf, minutesBetween } from '../lib/dates.js';
 
 /**
  * One cell. Quoted when it holds a comma, quote or line break; and a leading

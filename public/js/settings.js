@@ -4,6 +4,7 @@ import { $, shortDate, plural, builtAt } from './format.js';
 import { getTheme, setTheme, onThemeChange, ICON } from './theme.js';
 import { askConfirm, flash, attempt } from './dialogs.js';
 import { addDays, fyStart, fyEnd } from '../lib/dates.js';
+import { STATES } from '../core/holidays.js';
 
 const CALENDAR = new Set(['W', 'NW', 'PH']);
 
@@ -34,6 +35,7 @@ const FIELDS = {
   setStd: { key: 'stdDayHours', read: (v) => Number(v), show: (s) => s.stdDayHours },
   setReq: { key: 'officeReqPct', read: (v) => Number(v) / 100, show: (s) => Math.round(s.officeReqPct * 100) },
   setNw: { key: 'nonWorkingWeekday', read: (v) => Number(v), show: (s) => s.nonWorkingWeekday },
+  setState: { key: 'holidayState', read: (v) => v, show: (s) => s.holidayState },
   setIn: { key: 'defaultIn', read: (v) => v, show: (s) => s.defaultIn },
   setOut: { key: 'defaultOut', read: (v) => v, show: (s) => s.defaultOut },
 };
@@ -71,13 +73,16 @@ async function saveField(id) {
   const f = FIELDS[id];
   const el = $(id);
   if (el.value === '' && id !== 'setNw') { el.value = f.show(S.settings); return; }
-  const before = S.settings.nonWorkingWeekday;
   $('settingsErr').textContent = '';
   try {
-    await api('/api/settings', { method: 'PUT', body: JSON.stringify({ [f.key]: f.read(el.value) }) });
+    const r = await api('/api/settings', { method: 'PUT', body: JSON.stringify({ [f.key]: f.read(el.value) }) });
     await refresh();
     saved();
-    if (f.key === 'nonWorkingWeekday' && S.settings.nonWorkingWeekday !== before) $('nwHint').hidden = false;
+    // A new non-working day or state moves the calendar's own days by itself.
+    if (r.moved) {
+      $('calHint').textContent = `${r.moved} ${plural(r.moved, 'day')} moved from today on to match. Days before today, and anything you've logged, stay as they were.`;
+      $('calHint').hidden = false;
+    }
   } catch (e) {
     $('settingsErr').textContent = e.message;
     el.value = f.show(S.settings);
@@ -86,11 +91,12 @@ async function saveField(id) {
 
 export function wireSettings() {
   const dlg = $('settingsDlg');
+  $('setState').innerHTML = Object.entries(STATES).map(([k, name]) => `<option value="${k}">${name}</option>`).join('');
 
   $('settingsBtn').onclick = () => {
     fillForm();
     $('settingsErr').textContent = '';
-    $('nwHint').hidden = true;
+    $('calHint').hidden = true;
     dlg.showModal();
   };
   $('closeSettings').onclick = () => dlg.close();
@@ -124,7 +130,7 @@ export function wireSettings() {
     const r = await api('/api/calendar-skeleton', { method: 'POST', body: JSON.stringify({ fy: S.fy }) });
     await refresh();
     dlg.close();
-    $('nwHint').hidden = true;
+    $('calHint').hidden = true;
     flash(`${r.filled} ${plural(r.filled, 'day')} updated`);
   });
 
