@@ -10,6 +10,77 @@ Versions are `MAJOR.MINOR.PATCH`:
 `npm run bump [major|minor|patch]` moves the number in every place it appears
 and opens an entry here. Nothing else should edit a version by hand.
 
+## 1.4.1 - 2026-09-30
+
+- Settings › Appearance: "Match device" no longer spills out of its button on a phone.
+  On narrow screens each theme button shows its icon above the label.
+
+## 1.4.0 - 2026-09-30
+
+U9 to U18 from the review, on the dev branch.
+
+**Desktop**
+- The year grid fits the page at 1280px and wider, with no sideways scroll, and its card
+  lines up with the cards above. The grid shows Office, Avg and Timed under Hours. The
+  workbook's other hour columns (Avail, H%, Req, Gap) sit behind "All hour columns", and
+  the choice is kept for this browser. (U9)
+- A new Timed column shows how many office days so far have times, for example "8 / 9". When
+  some are missing, it turns amber, along with H% and the hours gap, and hovering explains
+  why. Office days still to come aren't counted, so a planned month no longer looks
+  incomplete. The tiles and the month view count the same way. (U15)
+- The log card shows the date with its times and punch button on the left and the codes
+  and comment on the right, so it's half as tall as before. (U16)
+- A line under the date lists the keyboard shortcuts: ← → move a day, ↑ ↓ a week, Shift
+  selects a range. It's hidden on touch screens. (U18)
+
+**Phone**
+- Select on the Month tab picks a range by touch: tap the first day, then the last. A sheet
+  then applies a code to the work days in the range. Weekends, holidays and non-working
+  days in the range are hatched and stay as they are. It's the touch version of
+  Shift-click. (U10)
+- The date heading is the date picker: tap it to choose a day. The date is shown once, and
+  Today only appears when you're looking at another day. (U17)
+
+**Both**
+- Code colours have a dark palette, so dark mode no longer shows bright light-mode
+  blocks. (U11)
+- Every code's text is at least 4.5:1 against its colour, in both themes, and so are the
+  faint grey labels. (U12)
+- Settings are in sections: Working pattern, Appearance, Years and calendar, and Backup.
+  Working pattern saves as you change it; there's no Save button. A refused value is
+  explained and the field goes back to what was saved. Changing the non-working day points
+  you at Refill. Clear future days is disabled, and says why, for a year with no days
+  after today. (U13)
+- The theme has three states, Match device, Light and Dark, each with an icon. You can set
+  it from the header button, the phone menu or Settings. (U14)
+- The API summary gains `pastOfficeDays`, `pastTimedOfficeDays` and
+  `untimedPastOfficeDays` for each month and the year. Nothing existing changed.
+
+## 1.3.0 - 2026-09-30
+
+U1 to U8 from the review, on the dev branch.
+
+**Phone**
+- Installable: a web manifest and home-screen icons, so it opens full screen from its own
+  icon. Long-press the icon for an "In now" shortcut. The manifest is fetched with the
+  proxy login, which the password in front of the app needs. (U1)
+- One punch button that does the next thing: In now with the time, then Out now. A line
+  under it confirms what was saved, with Undo. While you're in, the hours count up. (U2)
+- The header is one line: title, year and a menu holding Settings, the theme and the
+  version. The version badge only appears in the header when the page is stale. (U3)
+- Today / Month / Year tabs along the bottom. Month is a Monday-first calendar with that
+  month's figures under it: swipe or use the arrows to change month, tap a day to open it.
+  Year shows the tiles and one row per month in place of the 31-column grid. (U8)
+- 44px day arrows, bigger buttons and chips; "Clear" is now "Clear times". (U6)
+
+**Both**
+- The tiles are now office days, day length (average office day against the standard
+  day) and office hours against the target, which says it assumes 10.75 h office days
+  and is no longer painted red for being short. (U4)
+- Gaps in the grid read in words, "20.75 short" / "3.00 ahead", instead of a red plus
+  sign. (U5)
+- The Shift-click hint only shows where there's a keyboard. (U7)
+
 ## 1.2.0 - 2026-09-29
 
 A full review and restructure, on the dev branch. The page looks the same to the pixel; the

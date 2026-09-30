@@ -228,6 +228,18 @@ describe('protocol', () => {
     }
   });
 
+  test('the app is installable: manifest and icons served with their types', async () => {
+    const m = await app.get('/manifest.webmanifest');
+    assert.equal(m.status, 200);
+    assert.match(m.headers.get('content-type'), /application\/manifest\+json/);
+    assert.equal(m.json.display, 'standalone');
+    for (const icon of [...m.json.icons.map((i) => i.src), '/icons/apple-touch-icon.png']) {
+      const r = await app.get(icon);
+      assert.equal(r.status, 200, icon);
+      assert.equal(r.headers.get('content-type'), 'image/png', icon);
+    }
+  });
+
   test('static files are served, and nothing outside public/', async () => {
     assert.equal((await app.get('/')).status, 200);
     assert.equal((await app.get('/js/main.js')).status, 200);

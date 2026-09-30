@@ -77,16 +77,20 @@ export async function refresh() {
 /**
  * Save days. Saves run one at a time, in the order they were made, so a quick
  * second tap can't overtake the first and leave the older value on record.
+ * Resolves true when the save went through. `quiet` skips the "Saved" flag,
+ * for callers that confirm the save their own way.
  */
 let queue = Promise.resolve();
-export function saveDays(days, msg) {
+export function saveDays(days, msg, { quiet = false } = {}) {
   const run = async () => {
     try {
       await api('/api/days', { method: 'PUT', body: JSON.stringify({ days }) });
       await refresh();
-      flash(msg);
+      if (!quiet) flash(msg);
+      return true;
     } catch (e) {
       flash(e.message, true);
+      return false;
     }
   };
   queue = queue.then(run, run);

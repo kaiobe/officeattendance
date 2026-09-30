@@ -71,6 +71,8 @@ Hardening also went in:
 
 ## Part 2: UI/UX review
 
+> **Update, 1.4.0:** U1 to U8 shipped in 1.3.0 and U9 to U18 in 1.4.0. Every UI/UX item in this review is done.
+
 ### Working well
 
 Keep these:

@@ -57,3 +57,19 @@ test('month to date: current month to today, else the last or first month of the
   assert.equal(buildSummary(27, seed, settings, '2028-01-01').mtd.name, 'September');
   assert.equal(buildSummary(27, seed, settings, '2026-09-29').mtd.name, 'October');
 });
+
+test('untimed office days count only up to today: a planned office day cannot have times yet', () => {
+  const days = {
+    '2026-10-05': { code: 'O', in: '08:00', out: '16:00' },
+    '2026-10-06': { code: 'O' },                 // past, no times: flagged
+    '2026-10-20': { code: 'O' },                 // planned: not flagged
+  };
+  const s = summarise(Object.keys(days), days, settings, '2026-10-10');
+  assert.equal(s.untimedOfficeDays, 2);
+  assert.equal(s.pastOfficeDays, 2);
+  assert.equal(s.pastTimedOfficeDays, 1);
+  assert.equal(s.untimedPastOfficeDays, 1);
+  const { months } = buildSummary(27, days, settings, '2026-09-29');
+  assert.equal(months[0].pastOfficeDays, 0, 'a month still to come has nothing due');
+  assert.equal(months[0].untimedPastOfficeDays, 0);
+});

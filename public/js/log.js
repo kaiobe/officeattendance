@@ -1,6 +1,6 @@
 /** The "Log a day" card: the selected date, the code chips, times and comment. */
 import { S, saveDays } from './state.js';
-import { $, longDate, shortDate, nowHHMM, fmtHrs, plural } from './format.js';
+import { $, longDate, shortDate, nowHHMM, fmtHrs, plural, codeVars } from './format.js';
 import { askConfirm, flash } from './dialogs.js';
 import { DAY_NAMES, weekdayOf, minutesBetween } from '../lib/dates.js';
 
@@ -21,14 +21,19 @@ export function renderLog() {
   const date = S.sel;
   const rec = S.days[date] || {};
   const sameDay = renderedFor === date;
+  if (!sameDay) hidePunched();
   renderedFor = date;
 
   $('dateInput').value = date;
   const dow = DAY_NAMES[weekdayOf(date)];
   // Long form on a wide screen, abbreviated on a phone so it stays on one line.
+  // The heading is also the date picker: tap it to choose another day.
   $('dayline').innerHTML =
     `<span class="dl-long"><span class="dow">${dow}</span> ${longDate(date)}</span>` +
-    `<span class="dl-short"><span class="dow">${dow.slice(0, 3)}</span> ${shortDate(date)}</span>`;
+    `<span class="dl-short"><span><span class="dow">${dow.slice(0, 3)}</span> ${shortDate(date)}<svg class="pick" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></span></span>` +
+    '<span class="today-tag">Today</span>';
+  $('dayline').setAttribute('aria-label', `${dow} ${longDate(date)}${date === S.today ? ', today' : ''}. Choose another date`);
+  $('logCard').classList.toggle('on-today', date === S.today);
 
   const multi = S.range.length > 1;
   const note = $('rangenote');
@@ -42,9 +47,9 @@ export function renderLog() {
   $('chipzone').innerHTML = groups.map(([g, title]) => `
     <div class="chipgroup"><div class="glabel">${title}</div><div class="chips">
       ${S.codes.filter((c) => c.group === g).map((c) => `
-        <button class="chip" data-code="${c.code}" aria-pressed="${rec.code === c.code && !multi}"
-          style="background:${c.bg};color:${c.fg}">
-          <span class="dot" style="background:${c.fg}"></span>${c.label}
+        <button class="chip code" data-code="${c.code}" aria-pressed="${rec.code === c.code && !multi}"
+          style="${codeVars(c)}">
+          <span class="dot"></span>${c.label}
         </button>`).join('')}
     </div></div>`).join('') +
     '<div class="chipgroup"><div class="chips"><button class="chip clear" data-code="">Clear day</button></div></div>';
@@ -59,15 +64,58 @@ export function renderLog() {
   updateHrs();
 }
 
-/** The running total beside the times - with a nudge when Out is before In. */
+/**
+ * The running total beside the times. While you're in today and haven't
+ * punched out, it counts up from the In time instead. An Out earlier than the
+ * In gets a nudge, in case it was meant as a daytime time.
+ */
 function updateHrs() {
   const inV = $('inTime').value, outV = $('outTime').value;
-  const mins = minutesBetween(inV, outV);
   const el = $('hrsOut');
   const overnight = inV && outV && outV < inV;
-  el.textContent = mins ? `${fmtHrs(mins / 60)} hrs${overnight ? ' · Out is before In' : ''}` : '';
+  let text = '';
+  if (inV && outV) {
+    text = `${fmtHrs(minutesBetween(inV, outV) / 60)} hrs${overnight ? ' · Out is before In' : ''}`;
+  } else if (inV && !outV && S.sel === S.today && nowHHMM() > inV) {
+    const mins = minutesBetween(inV, nowHHMM());
+    text = `${Math.floor(mins / 60)} h ${mins % 60} m so far`;
+  }
+  el.textContent = text;
   el.classList.toggle('warn', !!overnight);
+  el.classList.toggle('sofar', !!(inV && !outV && text));
   el.title = overnight ? 'Counted as a shift across midnight. If you meant a daytime Out, fix the time.' : '';
+  updatePunch();
+}
+
+/** What the punch button does next: In until there's an In time, then Out. */
+function punchMode() {
+  if (!$('inTime').value) return 'in';
+  return $('outTime').value ? 'again' : 'out';
+}
+
+function updatePunch() {
+  const mode = punchMode(), now = nowHHMM(), b = $('punchBtn');
+  const label = mode === 'in' ? 'In now' : 'Out now';
+  b.classList.toggle('out', mode === 'out');
+  b.classList.toggle('again', mode === 'again');
+  $('punchLabel').textContent = label;
+  $('punchTime').textContent = now;
+  b.setAttribute('aria-label', `${label}, ${now}`);
+}
+
+let punchedTimer, undoPunch = null;
+function hidePunched() {
+  clearTimeout(punchedTimer);
+  $('punched').hidden = true;
+  undoPunch = null;
+}
+/** The confirmation under the button, with a way back. It stays for ten seconds. */
+function showPunched(text, undo) {
+  $('punchedText').textContent = text;
+  $('punched').hidden = false;
+  undoPunch = undo;
+  clearTimeout(punchedTimer);
+  punchedTimer = setTimeout(hidePunched, 10000);
 }
 
 const fields = () => ({ in: $('inTime').value || null, out: $('outTime').value || null, comment: $('comment').value || null });
@@ -79,19 +127,25 @@ const fields = () => ({ in: $('inTime').value || null, out: $('outTime').value |
  * one of those, or the range is being cleared.
  */
 async function applyCode(code) {
-  const multi = S.range.length > 1;
-  if (!multi) return saveDays({ [S.sel]: code === '' ? null : { code, ...fields() } });
+  if (S.range.length <= 1) return saveDays({ [S.sel]: code === '' ? null : { code, ...fields() } });
+  return applyCodeTo(S.range, code);
+}
 
+/**
+ * Apply a code to a set of days - a Shift-click range, or a range picked by
+ * touch in the month view. Each day keeps its own times and comment.
+ */
+export async function applyCodeTo(dates, code) {
   const spares = code !== '' && !CALENDAR.has(code);
-  const targets = S.range.filter((d) => !(spares && CALENDAR.has(S.days[d]?.code)));
-  const skipped = S.range.length - targets.length;
-  if (!targets.length) { flash('Nothing to change - every day in the range is a weekend, holiday or non-working day', true); return; }
+  const targets = dates.filter((d) => !(spares && CALENDAR.has(S.days[d]?.code)));
+  const skipped = dates.length - targets.length;
+  if (!targets.length) { flash('Nothing to change - every day in the range is a weekend, holiday or non-working day', true); return false; }
   const payload = {};
   for (const date of targets) {
     const prev = S.days[date] || {};
     payload[date] = code === '' ? null : { code, in: prev.in, out: prev.out, comment: prev.comment };
   }
-  return saveDays(payload, `${targets.length} ${plural(targets.length, 'day')} updated`
+  return saveDays(payload, `${targets.length} ${plural(targets.length, 'day')} ${code === '' ? 'cleared' : 'updated'}`
     + (skipped ? ` · ${skipped} weekend/holiday ${plural(skipped, 'day')} left as they were` : ''));
 }
 
@@ -109,12 +163,6 @@ function saveCurrent() {
     if (!rec) return;
   }
   return saveDays({ [S.sel]: { code: rec.code, ...f } });
-}
-
-/** Save the selected day as an office day, keeping whatever times are entered. */
-function saveAsOffice() {
-  const wasOffice = S.days[S.sel]?.code === 'O';
-  return saveDays({ [S.sel]: { code: 'O', ...fields() } }, wasOffice ? null : 'Saved as Office');
 }
 
 const shownTime = (t) => t || 'not set';
@@ -147,11 +195,42 @@ async function onTimeEdited(which) {
   saveCurrent();
 }
 
+/**
+ * Punch in or out now. Punching is a statement that you were in the office, so
+ * it codes the day O whatever it was before; the confirmation says so, and
+ * Undo puts the day back exactly as it was.
+ */
+export async function punch() {
+  const which = punchMode() === 'in' ? 'in' : 'out';
+  const field = which === 'in' ? 'inTime' : 'outTime', label = which === 'in' ? 'In' : 'Out';
+  const now = nowHHMM(), current = $(field).value;
+  if (!(await confirmReplace(current, {
+    title: `Change the ${label} time?`,
+    body: `${shortDate(S.sel)} already has an ${label} time of ${current}. Change it to ${now}?`,
+    ok: 'Change it',
+  }))) return;
+  const date = S.sel;
+  const before = S.days[date] ? { ...S.days[date] } : null;
+  $(field).value = now;
+  S.prevTimes[which] = now;
+  updateHrs();
+  const ok = await saveDays({ [date]: { code: 'O', ...fields() } }, null, { quiet: true });
+  if (!ok) return;
+  showPunched(`${label} at ${now}${before?.code === 'O' ? '' : ' · saved as an Office day'}`,
+    () => saveDays({ [date]: before }, 'Put back as it was'));
+}
+
 /** Ask first when a button would overwrite a time already there. Punching in on a blank day stays one tap. */
 const confirmReplace = (condition, question) => (condition ? askConfirm(question) : Promise.resolve(true));
 
 export function wireLog(ctx) {
   rerender = ctx.rerender;
+
+  // The date heading opens the browser's own date picker.
+  $('dayline').onclick = () => {
+    const input = $('dateInput');
+    try { input.showPicker(); } catch { input.focus(); input.click(); }
+  };
 
   $('inTime').oninput = updateHrs;
   $('outTime').oninput = updateHrs;
@@ -173,21 +252,10 @@ export function wireLog(ctx) {
     saveCurrent();
   };
 
-  // Punching in or out is a statement that you were in the office, so it codes
-  // the day O whatever it was set to before.
-  for (const [btn, field, label] of [['nowIn', 'inTime', 'In'], ['nowOut', 'outTime', 'Out']]) {
-    $(btn).onclick = async () => {
-      const now = nowHHMM(), current = $(field).value;
-      if (!(await confirmReplace(current, {
-        title: `Change the ${label} time?`,
-        body: `${shortDate(S.sel)} already has an ${label} time of ${current}. Change it to ${now}?`,
-        ok: 'Change it',
-      }))) return;
-      $(field).value = now;
-      updateHrs();
-      saveAsOffice();
-    };
-  }
+  $('punchBtn').onclick = punch;
+  $('undoPunch').onclick = () => { const undo = undoPunch; hidePunched(); if (undo) undo(); };
+  // Keep the time on the button and the running total current.
+  setInterval(updateHrs, 20000);
 
   $('clearTimes').onclick = async () => {
     const inV = $('inTime').value, outV = $('outTime').value;

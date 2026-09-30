@@ -1,7 +1,7 @@
 /** The banner: office days, office hours and average hours for the chosen period. */
 import { S } from './state.js';
-import { $, fmtHrs, fmtNum, pct, longDate, plural } from './format.js';
-import { pad } from '../lib/dates.js';
+import { $, fmtHrs, fmtHrs2, fmtNum, pct, longDate, plural, gapWords } from './format.js';
+import { pad, DAY_NAMES, MONTH_SHORT, parseIso, weekdayOf } from '../lib/dates.js';
 
 const ICON = { good: '●', warning: '▲', critical: '▼' };
 
@@ -12,11 +12,11 @@ function statusOf(p, req) {
   return 'critical';
 }
 
-function meter(value, target, cls) {
+function meter(value, target, cls, caps = ['0%', `Target ${(target * 100).toFixed(0)}%`, '100%']) {
   const w = Math.max(0, Math.min(1, value || 0)) * 100;
   return `<div class="meter"><div class="fill ${cls}" style="width:${w.toFixed(1)}%"></div>
-    <div class="target" style="left:${(target * 100).toFixed(1)}%" title="Requirement"></div></div>
-    <div class="metercap"><span>0%</span><span>Target ${(target * 100).toFixed(0)}%</span><span>100%</span></div>`;
+    <div class="target" style="left:${(target * 100).toFixed(1)}%" title="Target"></div></div>
+    <div class="metercap">${caps.map((c) => `<span>${c}</span>`).join('')}</div>`;
 }
 
 /** The month the Month view opens on: the current one, else the last with any data. */
@@ -42,25 +42,39 @@ function periodStats() {
 export function renderTiles() {
   const s = periodStats();
   const req = S.settings.officeReqPct;
+  const std = S.settings.stdDayHours;
   const empty = s.workDays === 0;
   const dStat = empty ? 'idle' : statusOf(s.pctDays, req);
-  // Hours only mean something once most office days have times against them.
-  const patchy = s.untimedOfficeDays > s.timedOfficeDays;
-  const hStat = empty || !s.officeHrs || patchy ? 'idle' : statusOf(s.pctHrs, req);
 
   // Being ahead and meeting the requirement are the same fact - gap is
   // req - office, and the requirement is met exactly when that's at or below
   // zero - so one pill carries both.
-  const gapVal = Math.abs(s.gapDays);
-  const gapText = gapVal % 1 === 0 ? String(gapVal) : gapVal.toFixed(1);
+  const g = gapWords(s.gapDays);
   const dayNote = empty ? '<div class="status idle">No work days logged</div>'
-    : s.gapDays <= 0
-      ? `<div class="status good">● ${gapVal === 0 ? 'On target' : `${gapText} ${plural(gapVal, 'day')} ahead`}</div>`
-      : `<div class="status ${dStat === 'warning' ? 'warning' : 'critical'}">▼ ${gapText} ${plural(gapVal, 'day')} short</div>`;
+    : g.cls === 'short'
+      ? `<div class="status ${dStat === 'warning' ? 'warning' : 'critical'}">▼ ${g.text.replace(' short', '')} ${plural(Math.abs(s.gapDays), 'day')} short</div>`
+      : `<div class="status good">● ${g.cls === 'on' ? 'On target' : `${g.text.replace(' ahead', '')} ${plural(Math.abs(s.gapDays), 'day')} ahead`}</div>`;
+
+  // Day length: how long office days actually are, against the standard day.
+  // This is the number behind the hours target, stated on its own.
+  const avg = s.avgHrsPerOfficeDay;
+  const diff = avg == null ? null : avg - std;
+  const lenNote = avg == null ? '<div class="status idle">No office times yet</div>'
+    : Math.abs(diff) < 0.005 ? '<div class="status good">● Matches the standard day</div>'
+    : diff > 0 ? `<div class="status good">● ${fmtHrs(diff)} h over standard</div>`
+    : `<div class="status idle">${fmtHrs(-diff)} h under standard</div>`;
+  const lenSub = avg == null ? `Standard day ${fmtHrs(std)} h`
+    : `average of ${s.timedOfficeDays} timed ${plural(s.timedOfficeDays, 'day')} · standard day ${fmtHrs(std)} h`;
+
+  // Office hours against the workbook's target. The target assumes every office
+  // day is a standard day, so it's shown as information, not as a failure.
+  const patchy = s.untimedPastOfficeDays > 0;
+  const hStat = empty || !s.officeHrs ? 'idle' : s.gapHrs <= 0 ? 'good' : 'idle';
   const hourNote = empty ? '<div class="status idle">No hours logged</div>'
     : !s.officeHrs ? '<div class="status idle">No office times entered</div>'
-    : patchy ? `<div class="status idle">${s.untimedOfficeDays} office days still need times</div>`
-    : `<div class="status ${hStat}">${ICON[hStat]} ${s.gapHrs <= 0 ? 'Above target' : `${fmtHrs(s.gapHrs)} hrs to go`}</div>`;
+    : patchy ? `<div class="status warning">${s.untimedPastOfficeDays} office ${plural(s.untimedPastOfficeDays, 'day')} without times</div>`
+    : s.gapHrs <= 0 ? '<div class="status good">● Target met</div>'
+    : `<div class="status idle">${fmtHrs(s.gapHrs)} h to go</div>`;
 
   $('tiles').innerHTML = `
     <div class="tile hero">
@@ -71,16 +85,18 @@ export function renderTiles() {
       ${meter(s.pctDays, req, dStat)}
     </div>
     <div class="tile">
-      <div class="label">Office hours</div>
-      <div class="value">${empty || !s.officeHrs ? '—' : pct(s.pctHrs) + '<span class="unit">%</span>'}</div>
-      <div class="sub">${fmtHrs(s.officeHrs)} of ${fmtHrs(s.availableHrs)} available hrs</div>
-      ${hourNote}
-      ${meter(s.pctHrs, req, hStat)}
+      <div class="label">Day length</div>
+      <div class="value">${avg == null ? '—' : fmtHrs2(avg) + '<span class="unit">h</span>'}</div>
+      <div class="sub">${lenSub}${s.untimedPastOfficeDays && avg != null ? ` · ${s.untimedPastOfficeDays} untimed` : ''}</div>
+      ${lenNote}
+      ${meter(avg == null ? 0 : avg / (std * 1.2), 1 / 1.2, 'info', ['0 h', `Standard ${fmtHrs(std)} h`, `${fmtHrs(std * 1.2)} h`])}
     </div>
     <div class="tile">
-      <div class="label">Avg per office day</div>
-      <div class="value">${s.avgHrsPerOfficeDay == null ? '—' : fmtHrs(s.avgHrsPerOfficeDay) + '<span class="unit">hrs</span>'}</div>
-      <div class="sub">${s.timedOfficeDays} ${plural(s.timedOfficeDays, 'day')} with times${s.untimedOfficeDays ? ` · ${s.untimedOfficeDays} untimed` : ''}</div>
+      <div class="label">Office hours against the target</div>
+      <div class="value">${empty || !s.officeHrs ? '—' : `${fmtHrs(s.officeHrs)}<span class="unit"> of ${fmtHrs(s.reqHrs)} h</span>`}</div>
+      <div class="sub">The target assumes every office day is a ${fmtHrs(std)} h standard day</div>
+      ${hourNote}
+      ${meter(s.pctHrs, req, hStat)}
     </div>`;
 
   const m = S.period === 'month' ? S.summary.months[S.monthIdx] : null;
@@ -114,4 +130,35 @@ export function wireTiles() {
   $('periodMtd').onclick = choose('mtd');
   $('periodMonth').onclick = choose('month');
   $('monthSel').onchange = (e) => { S.monthIdx = Number(e.target.value); renderTiles(); };
+}
+
+/**
+ * The phone's Today tab: how this month is going, in one card under the log.
+ * Always month to date, whatever the Year tab's period is set to.
+ */
+export function renderSoFar() {
+  const m = S.summary.mtd;
+  const req = S.settings.officeReqPct;
+  const empty = m.workDays === 0;
+  const g = gapWords(m.gapDays);
+  const cls = empty ? 'idle' : g.cls === 'short' ? (statusOf(m.pctDays, req) === 'warning' ? 'warning' : 'critical') : 'good';
+  const pill = empty ? 'No work days yet'
+    : g.cls === 'on' ? 'On target'
+    : `${g.text.split(' ')[0]} ${plural(Math.abs(m.gapDays), 'day')} ${g.cls}`;
+  let through = '';
+  if (m.partial) {
+    const [, mo, d] = parseIso(m.through);
+    through = `to ${DAY_NAMES[weekdayOf(m.through)].slice(0, 3)} ${d} ${MONTH_SHORT[mo - 1]}`;
+  }
+  const avg = m.avgHrsPerOfficeDay;
+  $('soFar').innerHTML = `
+    <div class="sf-head"><h2>${m.name} ${m.partial ? 'so far' : m.year}</h2><span>${through}</span></div>
+    <div class="sf-main">
+      <span class="sf-val">${empty ? '—' : pct(m.pctDays)}${empty ? '' : '<span class="unit">%</span>'}</span>
+      <span class="sub">office · ${m.officeDays} of ${m.workDays} work days</span>
+      <span class="status ${cls}">${pill}</span>
+    </div>
+    ${meter(m.pctDays, req, empty ? 'idle' : cls).split('<div class="metercap">')[0]}
+    <div class="sf-foot">${avg == null ? 'No office times yet this month'
+      : `Days in the office average ${fmtHrs(avg)} h, against a ${fmtHrs(S.settings.stdDayHours)} h standard day`}</div>`;
 }

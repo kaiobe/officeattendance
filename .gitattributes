@@ -1,0 +1,3 @@
+# Images are binary: never line-ending converted
+*.png binary
+*.ico binary

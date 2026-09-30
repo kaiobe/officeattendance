@@ -1,6 +1,7 @@
 /** The Settings dialog: working pattern, years, calendar fill, clearing, backup. */
 import { S, api, loadState, refresh } from './state.js';
-import { $, shortDate, plural } from './format.js';
+import { $, shortDate, plural, builtAt } from './format.js';
+import { getTheme, setTheme, onThemeChange, ICON } from './theme.js';
 import { askConfirm, flash, attempt } from './dialogs.js';
 import { addDays, fyStart, fyEnd } from '../lib/dates.js';
 
@@ -25,36 +26,81 @@ function report(fn) {
   });
 }
 
+/**
+ * Working pattern fields save the moment they change - there's no Save
+ * button to forget. A refused value is explained in the dialog and put back.
+ */
+const FIELDS = {
+  setStd: { key: 'stdDayHours', read: (v) => Number(v), show: (s) => s.stdDayHours },
+  setReq: { key: 'officeReqPct', read: (v) => Number(v) / 100, show: (s) => Math.round(s.officeReqPct * 100) },
+  setNw: { key: 'nonWorkingWeekday', read: (v) => Number(v), show: (s) => s.nonWorkingWeekday },
+  setIn: { key: 'defaultIn', read: (v) => v, show: (s) => s.defaultIn },
+  setOut: { key: 'defaultOut', read: (v) => v, show: (s) => s.defaultOut },
+};
+
+function fillForm() {
+  for (const [id, f] of Object.entries(FIELDS)) $(id).value = f.show(S.settings);
+  const next = S.lastFy + 1;
+  $('addFyLabel').textContent = `Add FY${next}`;
+  $('addFyNote').textContent = `Lays out Oct ${2000 + next - 1} – Sep ${2000 + next}`;
+  const { from, to } = futureEntries();
+  const none = from > to;                       // a year already over has no future days
+  $('clearFuture').disabled = none;
+  $('clearFutureNote').textContent = none ? `FY${S.fy} has no days after today`
+    : from === fyStart(S.fy) ? `All of FY${S.fy} · asks first`
+    : `${from === addDays(S.today, 1) ? 'Tomorrow' : shortDate(from)} to ${shortDate(to)} · asks first`;
+  $('settingsVersion').textContent = `Version ${S.version || ''} · deployed ${builtAt(S.build)}`;
+  showTheme();
+}
+
+function showTheme() {
+  const t = getTheme();
+  document.querySelectorAll('[data-theme-choice]').forEach((b) => b.setAttribute('aria-checked', String(b.dataset.themeChoice === t)));
+}
+
+let savedTimer;
+function saved(text = 'Saved') {
+  const el = $('settingsSaved');
+  el.textContent = `✓ ${text}`;
+  el.classList.add('ok');
+  clearTimeout(savedTimer);
+  savedTimer = setTimeout(() => { el.textContent = 'Saved as you change it'; el.classList.remove('ok'); }, 2500);
+}
+
+async function saveField(id) {
+  const f = FIELDS[id];
+  const el = $(id);
+  if (el.value === '' && id !== 'setNw') { el.value = f.show(S.settings); return; }
+  const before = S.settings.nonWorkingWeekday;
+  $('settingsErr').textContent = '';
+  try {
+    await api('/api/settings', { method: 'PUT', body: JSON.stringify({ [f.key]: f.read(el.value) }) });
+    await refresh();
+    saved();
+    if (f.key === 'nonWorkingWeekday' && S.settings.nonWorkingWeekday !== before) $('nwHint').hidden = false;
+  } catch (e) {
+    $('settingsErr').textContent = e.message;
+    el.value = f.show(S.settings);
+  }
+}
+
 export function wireSettings() {
   const dlg = $('settingsDlg');
 
   $('settingsBtn').onclick = () => {
-    $('setStd').value = S.settings.stdDayHours;
-    $('setReq').value = Math.round(S.settings.officeReqPct * 100);
-    $('setNw').value = S.settings.nonWorkingWeekday;
-    $('addFyLabel').textContent = `Add FY${S.lastFy + 1}`;
-    $('setIn').value = S.settings.defaultIn;
-    $('setOut').value = S.settings.defaultOut;
+    fillForm();
     $('settingsErr').textContent = '';
+    $('nwHint').hidden = true;
     dlg.showModal();
   };
   $('closeSettings').onclick = () => dlg.close();
+  for (const id of Object.keys(FIELDS)) $(id).onchange = () => saveField(id);
 
-  $('saveSettings').onclick = () => report(async () => {
-    const before = S.settings.nonWorkingWeekday;
-    await api('/api/settings', { method: 'PUT', body: JSON.stringify({
-      stdDayHours: Number($('setStd').value),
-      officeReqPct: Number($('setReq').value) / 100,
-      nonWorkingWeekday: Number($('setNw').value),
-      defaultIn: $('setIn').value,
-      defaultOut: $('setOut').value,
-    }) });
-    dlg.close();
-    await refresh();
-    flash(S.settings.nonWorkingWeekday !== before
-      ? 'Settings saved · use "Fill weekends…" to move your non-working days'
-      : 'Settings saved');
+  document.querySelectorAll('[data-theme-choice]').forEach((b) => {
+    b.insertAdjacentHTML('afterbegin', ICON[b.dataset.themeChoice]);
+    b.onclick = () => setTheme(b.dataset.themeChoice);
   });
+  onThemeChange(showTheme);
 
   $('addFy').onclick = () => report(async () => {
     const r = await api('/api/add-fy', { method: 'POST', body: '{}' });
@@ -67,6 +113,7 @@ export function wireSettings() {
     const r = await api('/api/calendar-skeleton', { method: 'POST', body: JSON.stringify({ fy: S.fy }) });
     await refresh();
     dlg.close();
+    $('nwHint').hidden = true;
     flash(`${r.filled} ${plural(r.filled, 'day')} updated`);
   });
 
