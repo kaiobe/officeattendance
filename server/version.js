@@ -32,8 +32,10 @@ export const VERSION = (() => {
 
 export const BUILD = (() => {
   try {
-    return readdirSync(PUBLIC)
-      .map((f) => statSync(join(PUBLIC, f)).mtime.getTime())
+    // Newest file anywhere under public/, including the js/ and lib/ modules.
+    return readdirSync(PUBLIC, { recursive: true, withFileTypes: true })
+      .filter((e) => e.isFile())
+      .map((e) => statSync(join(e.parentPath ?? e.path, e.name)).mtime.getTime())
       .reduce((a, b) => Math.max(a, b), 0) || null;
   } catch { return null; }
 })();

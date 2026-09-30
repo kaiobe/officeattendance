@@ -3,48 +3,66 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#f4f3f0">
+<meta name="theme-color" content="#f4f3f0" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#141413" media="(prefers-color-scheme: dark)">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Attendance">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
 <title>Office Attendance</title>
-<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='7' fill='%232a78d6'/><rect x='8' y='7' width='7' height='18' rx='1.5' fill='white'/><rect x='17' y='12' width='7' height='13' rx='1.5' fill='white' opacity='.6'/></svg>">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='7' fill='%231f63b8'/><rect x='8' y='7' width='7' height='18' rx='1.5' fill='white'/><rect x='17' y='12' width='7' height='13' rx='1.5' fill='%23aac4e4'/></svg>">
+<link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+<!-- use-credentials: behind the proxy's password, a manifest fetched without
+     credentials gets a 401 and the app can't be installed -->
+<link rel="manifest" href="/manifest.webmanifest" crossorigin="use-credentials">
 <link rel="stylesheet" href="/styles.css">
 </head>
-<body>
+<body data-tab="today">
 <header class="top">
   <div class="top-in">
     <div class="brand">
-      <h1>Office Attendance</h1>
+      <h1><span class="name-long">Office Attendance</span><span class="name-short">Attendance</span></h1>
       <span class="sub" id="fyrange"></span>
     </div>
     <label class="sr" for="fysel">Financial year</label>
     <select class="ghost" id="fysel"></select>
-    <button class="ghost" id="settingsBtn">Settings</button>
-    <button class="ghost" id="themeBtn" title="Toggle theme" aria-label="Toggle theme">&#9686;</button>
+    <button class="ghost desk-only" id="settingsBtn">Settings</button>
+    <button class="ghost icon-sm desk-only" id="themeBtn" aria-label="Theme"></button>
     <span class="version" id="version" title="Build currently being served"></span>
+    <button class="ghost icon phone-only" id="menuBtn" aria-label="Menu" aria-haspopup="dialog">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></svg>
+    </button>
   </div>
 </header>
 
 <div class="wrap">
-  <section class="card" id="logCard">
+  <section class="card tab-today" id="logCard">
     <div class="card-head">
       <h2>Log a day</h2>
       <div class="spacer"></div>
-      <span class="saved" id="savedFlag">Saved</span>
-      <span class="err" id="errFlag"></span>
+      <span class="saved" id="savedFlag" role="status" aria-live="polite">Saved</span>
+      <span class="err" id="errFlag" role="alert"></span>
     </div>
     <div class="logrow">
       <div class="logcol when">
         <div class="daynav">
           <button class="ghost" id="prevDay" aria-label="Previous day">&lsaquo;</button>
-          <input type="date" id="dateInput">
+          <input type="date" id="dateInput" aria-label="Date">
           <button class="ghost" id="nextDay" aria-label="Next day">&rsaquo;</button>
           <button class="ghost" id="todayBtn">Today</button>
         </div>
-        <div class="dayline" id="dayline"></div>
+        <button type="button" class="dayline" id="dayline" aria-label="Choose a date"></button>
+        <p class="keyhint" aria-hidden="true"><kbd>←</kbd> <kbd>→</kbd> a day &middot; <kbd>↑</kbd> <kbd>↓</kbd> a week &middot; <kbd>Shift</kbd> selects, and <kbd>↑</kbd> <kbd>↓</kbd> run to the week's end &middot; <kbd class="mod">Ctrl</kbd>-click picks days</p>
         <div class="rangenote" id="rangenote" hidden></div>
       </div>
 
       <div class="logcol what">
+        <p class="locknote" id="lockNote" hidden>Weekend: not a work day, so it can't be changed.</p>
         <div id="chipzone"></div>
+        <div class="field comment-field">
+          <label for="comment">Comment</label>
+          <input type="text" id="comment" maxlength="200">
+        </div>
       </div>
 
       <div class="logcol hours">
@@ -52,22 +70,44 @@
           <div class="field"><label for="inTime">In</label><input type="time" id="inTime"></div>
           <div class="field"><label for="outTime">Out</label><input type="time" id="outTime"></div>
         </div>
+        <button class="punch" id="punchBtn"><span id="punchLabel">In now</span><span class="punch-time" id="punchTime"></span></button>
+        <div class="punched" id="punched" role="status" aria-live="polite" hidden>
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6L9 17l-5-5"/></svg>
+          <span id="punchedText"></span>
+          <button id="undoPunch">Undo</button>
+        </div>
         <div class="timeacts">
           <button class="tiny" id="stdTimes">Standard day</button>
-          <button class="tiny punch" id="nowIn">In now</button>
-          <button class="tiny punch" id="nowOut">Out now</button>
-          <button class="tiny" id="clearTimes">Clear</button>
+          <button class="tiny" id="clearTimes">Clear times</button>
           <span class="hrs" id="hrsOut"></span>
-        </div>
-        <div class="field" style="margin-top:12px">
-          <label for="comment">Comment</label>
-          <input type="text" id="comment" maxlength="200">
         </div>
       </div>
     </div>
   </section>
 
-  <section class="card" id="tilesCard" style="margin-top:18px">
+  <section class="card tab-today phone-only" id="soFar" aria-label="This month so far"></section>
+
+  <section class="card tab-month phone-only" id="monthCard" aria-labelledby="mTitle">
+    <div class="card-head mhead">
+      <button class="ghost icon" id="mPrev" aria-label="Previous month">&lsaquo;</button>
+      <h2 id="mTitle"></h2>
+      <button class="ghost icon" id="mNext" aria-label="Next month">&rsaquo;</button>
+      <button class="ghost msel" id="mSelect" aria-pressed="false">Select</button>
+    </div>
+    <p class="mhint" id="mHint" hidden>Tap the first day, then the last</p>
+    <div class="mbody">
+      <div class="mdows" aria-hidden="true"><span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span><span>Sun</span></div>
+      <div class="mgrid" id="mGrid"></div>
+      <div class="mlegend">
+        <span><i class="k-dot"></i>times logged</span>
+        <span><i class="k-plan"></i>still to come</span>
+        <span><i class="k-we"></i>weekend</span>
+      </div>
+    </div>
+    <div class="mstats" id="mStats"></div>
+  </section>
+
+  <section class="card tab-year" id="tilesCard">
     <div class="card-head">
       <h2 id="tilesTitle">Year to date</h2>
       <div class="spacer"></div>
@@ -83,54 +123,119 @@
     <div class="tiles" id="tiles"></div>
   </section>
 
-  <section class="card" id="gridCard" style="margin-top:18px">
+  <section class="card tab-year" id="gridCard">
     <div class="card-head">
-      <h2>FY<span id="fyLabel"></span> grid</h2>
-      <span class="note" id="gridHint">Click a day to edit &middot; Shift-click to select a range</span>
+      <h2>FY<span id="fyLabel"></span> <span class="desk-only">grid</span><span class="phone-only">by month</span></h2>
+      <span class="note desk-only" id="gridHint">Click a day to edit<span class="shift-hint"> &middot; Shift-click for a range &middot; <span class="mod">Ctrl</span>-click to pick days</span></span>
+      <div class="spacer desk-only"></div>
+      <button class="ghost desk-only" id="hourColsBtn" aria-pressed="false">All hour columns</button>
     </div>
-    <div class="gridscroll"><table class="cal" id="cal"></table></div>
+    <div class="gridscroll desk-only"><table class="cal" id="cal"></table></div>
+    <div class="yearlist phone-only" id="yearList"></div>
     <div class="keytotals" id="keytotals"></div>
     <div class="gridnote" id="gridnote" hidden></div>
     <div class="legend" id="legend"></div>
   </section>
 </div>
 
-<dialog id="settingsDlg">
-  <div class="card-head"><h2>Settings</h2><div class="spacer"></div><button class="ghost" id="closeSettings">Close</button></div>
+<section class="rangesheet phone-only" id="rangeSheet" aria-labelledby="rsTitle" hidden>
+  <div class="rs-grip" aria-hidden="true"></div>
+  <div class="rs-head">
+    <h3 id="rsTitle"></h3>
+    <p id="rsNote"></p>
+  </div>
+  <div class="rs-chips" id="rsChips"></div>
+  <div class="rs-actions">
+    <button class="ghost" id="rsCancel">Cancel</button>
+    <button class="ghost danger" id="rsClear">Clear these days</button>
+  </div>
+</section>
+
+<nav class="tabbar phone-only" id="tabbar" aria-label="Sections">
+  <button data-tab="today" aria-current="page">
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>Today</button>
+  <button data-tab="month">
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M3 9h18M8 2v4M16 2v4"/></svg>Month</button>
+  <button data-tab="year">
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>Year</button>
+</nav>
+
+<dialog id="menuDlg" aria-label="Menu">
+  <div class="menu-body">
+    <button class="menu-item" id="menuSettings">Settings</button>
+    <button class="menu-item" id="menuTheme">Theme</button>
+    <p class="menu-version" id="menuVersion"></p>
+  </div>
+</dialog>
+
+<dialog id="settingsDlg" aria-labelledby="settingsTitle">
+  <div class="card-head"><h2 id="settingsTitle">Settings</h2><div class="spacer"></div><button class="ghost" id="closeSettings">Close</button></div>
   <div class="dlg-body">
-    <div class="row2">
-      <div class="field"><label for="setStd">Standard day (hours)</label><input type="number" id="setStd" step="0.25" min="0" max="24"></div>
-      <div class="field"><label for="setReq">Office requirement (%)</label><input type="number" id="setReq" step="1" min="0" max="100"></div>
-    </div>
-    <div class="row2">
-      <div class="field"><label for="setNw">Non-working weekday</label>
-        <select id="setNw">
-          <option value="-1">None (5-day week)</option>
-          <option value="1">Monday</option><option value="2">Tuesday</option><option value="3">Wednesday</option>
-          <option value="4">Thursday</option><option value="5">Friday</option>
-        </select>
+    <section class="set-sec" aria-labelledby="secWork">
+      <div class="set-head">
+        <h3 id="secWork">Working pattern</h3>
+        <span class="set-saved" id="settingsSaved" role="status" aria-live="polite">Saved as you change it</span>
       </div>
-      <div class="field"><label for="addFyLabel">Financial years</label>
-        <button class="ghost" id="addFy" style="width:100%"><span id="addFyLabel">Add next year</span></button>
+      <div class="set-rows">
+        <div class="set-row">
+          <label for="setStd">Standard day</label>
+          <span class="set-in"><input type="number" id="setStd" step="0.25" min="0.25" max="24" inputmode="decimal"><span class="unit">h</span></span>
+        </div>
+        <div class="set-row">
+          <label for="setReq">Office requirement</label>
+          <span class="set-in"><input type="number" id="setReq" step="1" min="0" max="100" inputmode="numeric"><span class="unit">%</span></span>
+        </div>
+        <div class="set-row">
+          <label for="setNw">Non-working day</label>
+          <select id="setNw">
+            <option value="-1">None (5-day week)</option>
+            <option value="1">Monday</option><option value="2">Tuesday</option><option value="3">Wednesday</option>
+            <option value="4">Thursday</option><option value="5">Friday</option>
+          </select>
+        </div>
+        <div class="set-row hours-row">
+          <span id="stdHoursLbl">Standard hours</span>
+          <span class="set-in">
+            <input type="time" id="setIn" aria-label="Standard day starts">
+            <span class="unit">–</span>
+            <input type="time" id="setOut" aria-label="Standard day ends">
+          </span>
+        </div>
       </div>
-    </div>
-    <div class="row2">
-      <div class="field"><label for="setIn">Default in</label><input type="time" id="setIn"></div>
-      <div class="field"><label for="setOut">Default out</label><input type="time" id="setOut"></div>
-    </div>
-    <div class="actions">
-      <button class="primary" id="saveSettings">Save settings</button>
-      <button class="ghost" id="fillSkeleton">Fill weekends, public holidays &amp; non-working days</button>
-      <button class="ghost danger" id="clearFuture">Clear future days</button>
-    </div>
-    <hr>
-    <div class="actions">
-      <a class="ghost linkbtn" id="csvLink" download>Export CSV</a>
-      <a class="ghost linkbtn" href="/api/export.json" download>Backup JSON</a>
-      <button class="ghost" id="importBtn">Restore backup&hellip;</button>
-      <input type="file" id="importFile" accept="application/json" hidden>
-    </div>
-    <p class="note">Work days for the requirement = Office + Home; working sick is counted in the key totals under the grid, not in the percentage. Office hours count only on Office days. Data lives in <code>data/attendance.db</code>.</p>
+      <p class="set-hint" id="nwHint" hidden>Your non-working day changed. <b>Refill weekends and holidays</b> below moves the NW days from today on.</p>
+    </section>
+
+    <section class="set-sec" aria-labelledby="secLook">
+      <h3 id="secLook">Appearance</h3>
+      <div class="seg theme-seg" role="radiogroup" aria-labelledby="secLook">
+        <button role="radio" data-theme-choice="system" aria-checked="true">Match device</button>
+        <button role="radio" data-theme-choice="light" aria-checked="false">Light</button>
+        <button role="radio" data-theme-choice="dark" aria-checked="false">Dark</button>
+      </div>
+    </section>
+
+    <section class="set-sec" aria-labelledby="secYears">
+      <h3 id="secYears">Years and calendar</h3>
+      <div class="set-list">
+        <button class="set-item" id="addFy"><span class="set-item-t"><span id="addFyLabel">Add next year</span><small id="addFyNote"></small></span></button>
+        <button class="set-item" id="fillSkeleton"><span class="set-item-t"><span>Refill weekends and holidays</span><small>Fills blank days, and moves non-working days from today on</small></span></button>
+        <button class="set-item danger" id="clearFuture"><span class="set-item-t"><span>Clear future days</span><small id="clearFutureNote">Tomorrow to the end of the year · asks first</small></span></button>
+      </div>
+    </section>
+
+    <section class="set-sec" aria-labelledby="secBackup">
+      <h3 id="secBackup">Backup</h3>
+      <div class="set-backup">
+        <a class="ghost linkbtn" id="csvLink" download>Export CSV</a>
+        <a class="ghost linkbtn" href="/api/export.json" download>Back up</a>
+        <button class="ghost" id="importBtn">Restore&hellip;</button>
+        <input type="file" id="importFile" accept="application/json" hidden>
+      </div>
+    </section>
+
+    <p class="dlg-err" id="settingsErr" role="alert"></p>
+    <p class="note">Work days for the requirement = Office + Home; working sick is counted in the key totals under the grid, not in the percentage. Office hours count only on Office days. Data lives in <code>/data/attendance.db</code> on the container's volume.</p>
+    <p class="note" id="settingsVersion"></p>
   </div>
 </dialog>
 

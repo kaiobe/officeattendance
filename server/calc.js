@@ -1,42 +1,5 @@
 import { CODE_MAP } from './codes.js';
-
-export const pad = (n) => String(n).padStart(2, '0');
-export const iso = (y, m, d) => `${y}-${pad(m)}-${pad(d)}`;
-export const daysInMonth = (y, m) => new Date(Date.UTC(y, m, 0)).getUTCDate();
-// 0=Sun..6=Sat
-export const weekdayOf = (dateStr) => {
-  const [y, m, d] = dateStr.split('-').map(Number);
-  return new Date(Date.UTC(y, m - 1, d)).getUTCDay();
-};
-export const fyStartYear = (fy) => 2000 + fy - 1;      // FY27 -> Oct 2026
-export const fyOfDate = (dateStr) => {
-  const [y, m] = dateStr.split('-').map(Number);
-  return (m >= 10 ? y + 1 : y) - 2000; // Oct-Dec belong to the following FY
-};
-
-/** The 12 (year, month) pairs of a financial year, Oct -> Sep. */
-export function fyMonths(fy) {
-  const sy = fyStartYear(fy);
-  const out = [];
-  for (let i = 0; i < 12; i++) {
-    const m = ((9 + i) % 12) + 1;
-    const y = i < 3 ? sy : sy + 1;
-    out.push({ year: y, month: m });
-  }
-  return out;
-}
-
-export const MONTH_NAMES = ['January','February','March','April','May','June','July','August','September','October','November','December'];
-
-/** Minutes between two "HH:MM" strings; handles a shift that crosses midnight. */
-export function minutesBetween(inT, outT) {
-  if (!inT || !outT) return 0;
-  const [ih, im] = inT.split(':').map(Number);
-  const [oh, om] = outT.split(':').map(Number);
-  let mins = oh * 60 + om - (ih * 60 + im);
-  if (mins < 0) mins += 24 * 60;
-  return mins;
-}
+import { MONTH_NAMES, daysInMonth, iso, fyMonths, minutesBetween } from '../public/lib/dates.js';
 
 const round2 = (n) => Math.round(n * 100) / 100;
 
@@ -55,8 +18,9 @@ const round2 = (n) => Math.round(n * 100) / 100;
  *   DAYS WORKED = O + H + WS
  *   TOTAL WORK DAYS = everything except public holidays, non-working days and weekends
  */
-export function summarise(dates, days, settings) {
+export function summarise(dates, days, settings, todayStr = null) {
   let workDays = 0, officeDays = 0, officeMins = 0, timedOfficeDays = 0;
+  let pastOfficeDays = 0, pastTimedOfficeDays = 0;   // up to today: the days that could have times by now
   let daysWorked = 0, totalWorkDays = 0;
   const byCode = {};
   for (const date of dates) {
@@ -72,6 +36,7 @@ export function summarise(dates, days, settings) {
       officeDays++;
       const mins = minutesBetween(rec.in, rec.out);
       if (mins > 0) { officeMins += mins; timedOfficeDays++; }
+      if (!todayStr || date <= todayStr) { pastOfficeDays++; if (mins > 0) pastTimedOfficeDays++; }
     }
   }
   const officeHrs = officeMins / 60;
@@ -97,6 +62,9 @@ export function summarise(dates, days, settings) {
     avgHrsPerOfficeDay: timedOfficeDays ? round2(officeHrs / timedOfficeDays) : null,
     timedOfficeDays,
     untimedOfficeDays: officeDays - timedOfficeDays,
+    pastOfficeDays,
+    pastTimedOfficeDays,
+    untimedPastOfficeDays: pastOfficeDays - pastTimedOfficeDays,
   };
 }
 
@@ -106,7 +74,7 @@ export function buildSummary(fy, days, settings, todayStr) {
     const n = daysInMonth(year, month);
     const dates = [];
     for (let d = 1; d <= n; d++) dates.push(iso(year, month, d));
-    return { year, month, name: MONTH_NAMES[month - 1], days: n, dates, ...summarise(dates, days, settings) };
+    return { year, month, name: MONTH_NAMES[month - 1], days: n, dates, ...summarise(dates, days, settings, todayStr) };
   });
   const all = months.flatMap((m) => m.dates);
   const ytdDates = all.filter((d) => d <= todayStr);
@@ -132,7 +100,7 @@ export function buildSummary(fy, days, settings, todayStr) {
 
   return {
     months: months.map(({ dates, ...rest }) => rest),
-    total: summarise(all, days, settings),
+    total: summarise(all, days, settings, todayStr),
     ytd: summarise(ytdDates, days, settings),
     mtd,
     firstDate: all[0],

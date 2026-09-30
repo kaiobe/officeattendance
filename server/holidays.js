@@ -1,4 +1,4 @@
-import { iso, weekdayOf, daysInMonth } from './calc.js';
+import { iso, weekdayOf, daysInMonth, addDays, isWeekend } from '../public/lib/dates.js';
 
 /**
  * Victorian public holidays.
@@ -40,12 +40,6 @@ export function easterSunday(year) {
   return [month, day];
 }
 
-const addDays = (dateStr, n) => {
-  const [y, m, d] = dateStr.split('-').map(Number);
-  const t = new Date(Date.UTC(y, m - 1, d + n));
-  return iso(t.getUTCFullYear(), t.getUTCMonth() + 1, t.getUTCDate());
-};
-
 /** The nth occurrence of a weekday in a month, e.g. 2nd Monday in March. */
 export function nthWeekday(year, month, weekday, n) {
   let count = 0;
@@ -57,8 +51,6 @@ export function nthWeekday(year, month, weekday, n) {
   }
   return null;
 }
-
-const isWeekend = (date) => { const w = weekdayOf(date); return w === 0 || w === 6; };
 
 /** Next weekday that isn't already taken by another holiday. */
 function nextFreeWeekday(date, taken) {
