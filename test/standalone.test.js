@@ -7,6 +7,8 @@ import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { localStore } from '../public/local/store.js';
 import { createService, Download } from '../public/core/service.js';
+import { NEW_PHONE_SETTINGS } from '../public/local/defaults.js';
+import { normaliseTime } from '../public/js/timefield.js';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -20,7 +22,7 @@ function memoryStorage({ failWrites = false } = {}) {
   };
 }
 
-const NEW_PHONE = { stdDayHours: 7.6, nonWorkingWeekday: -1, holidayState: 'NSW' };
+const NEW_PHONE = { ...NEW_PHONE_SETTINGS, holidayState: 'NSW' };
 
 function phone(storage = memoryStorage(), today = '2026-10-14') {
   const store = localStore({ storage, defaults: NEW_PHONE });
@@ -37,7 +39,10 @@ test('the shared service runs over phone storage: state, holidays for the chosen
   const s = call('GET', '/api/state?fy=27');
   assert.equal(s.fy, 27);
   assert.equal(s.settings.holidayState, 'NSW');
-  assert.equal(s.settings.stdDayHours, 7.6);
+  // a new phone: 8.75 h days, 09:00 to 17:45
+  assert.equal(s.settings.stdDayHours, 8.75);
+  assert.equal(s.settings.defaultIn, '09:00');
+  assert.equal(s.settings.defaultOut, '17:45');
   assert.equal(s.days['2026-10-05'].code, 'PH');        // NSW Labour Day
   assert.equal(s.days['2026-11-03'], undefined);        // no Melbourne Cup
   assert.equal(s.days['2026-10-12'], undefined);        // no NW on a 5-day week
@@ -127,4 +132,17 @@ test('the Cloudflare config publishes the build output as a static site', () => 
   assert.equal(cfg.assets.directory, './dist');
   assert.equal(cfg.main, undefined, 'no Worker script: static files only');
   assert.match(cfg.compatibility_date, /^\d{4}-\d\d-\d\d$/);
+});
+
+test('time boxes are 24-hour: however a time is typed, it becomes HH:MM', () => {
+  const cases = {
+    '09:30': '09:30', '9:30': '09:30', '930': '09:30', '0930': '09:30', '9.30': '09:30', '9': '09:00',
+    '17:45': '17:45', '1745': '17:45', '17.45': '17:45', ' 17:45 ': '17:45', '0:05': '00:05', '23:59': '23:59',
+    '5:45pm': '17:45', '5:45 PM': '17:45', '9am': '09:00', '12pm': '12:00', '12am': '00:00', '12:30am': '00:30',
+    '': '', '   ': '',
+  };
+  for (const [typed, want] of Object.entries(cases)) assert.equal(normaliseTime(typed), want, JSON.stringify(typed));
+  for (const bad of ['24:00', '9:60', '25', '12345', 'abc', '13pm', '0am', '9:3:0', '-1']) {
+    assert.equal(normaliseTime(bad), null, JSON.stringify(bad));
+  }
 });

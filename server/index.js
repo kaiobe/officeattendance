@@ -17,7 +17,10 @@ const TZ = process.env.TZ_NAME || 'Australia/Melbourne';
 
 /** Today in the app's timezone, not the server's - that's what decides which day "In now" lands on. */
 const dateFmt = new Intl.DateTimeFormat('en-CA', { timeZone: TZ, year: 'numeric', month: '2-digit', day: '2-digit' });
-const today = () => dateFmt.format(new Date());
+// APP_TODAY pins the date (YYYY-MM-DD) for testing, so date-sensitive checks
+// give the same answer whatever day they're run. Never set it in production.
+const PINNED = /^\d{4}-\d\d-\d\d$/.test(process.env.APP_TODAY || '') ? process.env.APP_TODAY : null;
+const today = PINNED ? () => PINNED : () => dateFmt.format(new Date());
 
 const db = openDb(DB_FILE);
 
@@ -32,7 +35,7 @@ const removed = tidyYears(store, yearSpan(store, getSettings(db), today()));
 if (removed) console.log(`Removed ${removed} unused calendar days from financial years outside the app's range.`);
 
 const server = createServer(createApp({ db, today, tz: TZ }));
-server.listen(PORT, () => console.log(`Office attendance v${VERSION} on http://0.0.0.0:${PORT}  (db: ${DB_FILE}, tz: ${TZ})`));
+server.listen(PORT, () => console.log(`Office attendance v${VERSION} on http://0.0.0.0:${PORT}  (db: ${DB_FILE}, tz: ${TZ}${PINNED ? `, date pinned to ${PINNED}` : ''})`));
 
 // Stop cleanly on `docker stop`, so the database is closed rather than the
 // process being killed ten seconds later.

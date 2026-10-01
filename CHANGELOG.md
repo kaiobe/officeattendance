@@ -10,6 +10,17 @@ Versions are `MAJOR.MINOR.PATCH`:
 `npm run bump [major|minor|patch]` moves the number in every place it appears
 and opens an entry here. Nothing else should edit a version by hand.
 
+## 1.8.1 - 2026-10-01
+
+- **Times are always 24-hour.** The browser's own time boxes follow the computer's
+  language settings, and showed 12-hour times on some machines. They're now plain text
+  boxes that read `HH:MM`. Type a time any natural way (`930`, `9:30`, `1745`, `5:45pm`)
+  and it's tidied when you leave the box. Something that isn't a time puts the box back
+  and says so. This covers the In and Out times, the standard hours in Settings, and the
+  standalone version's setup screen.
+- **Standalone version: a new phone starts on 8.75-hour days, 09:00 to 17:45** (was 7.6
+  hours, 09:00 to 17:00). Phones already set up keep their own settings.
+
 ## 1.8.0 - 2026-09-30
 
 **A standalone version for colleagues.** The same app as a static site that runs

@@ -71,8 +71,8 @@
 
       <div class="logcol hours">
         <div class="times">
-          <div class="field"><label for="inTime">In</label><input type="time" id="inTime"></div>
-          <div class="field"><label for="outTime">Out</label><input type="time" id="outTime"></div>
+          <div class="field"><label for="inTime">In</label><input type="text" class="time24" inputmode="numeric" autocomplete="off" spellcheck="false" maxlength="7" size="6" placeholder="HH:MM" id="inTime"></div>
+          <div class="field"><label for="outTime">Out</label><input type="text" class="time24" inputmode="numeric" autocomplete="off" spellcheck="false" maxlength="7" size="6" placeholder="HH:MM" id="outTime"></div>
         </div>
         <button class="punch" id="punchBtn"><span id="punchLabel">In now</span><span class="punch-time" id="punchTime"></span></button>
         <div class="punched" id="punched" role="status" aria-live="polite" hidden>
@@ -204,9 +204,9 @@
         <div class="set-row hours-row">
           <span id="stdHoursLbl">Standard hours</span>
           <span class="set-in">
-            <input type="time" id="setIn" aria-label="Standard day starts">
+            <input type="text" class="time24" inputmode="numeric" autocomplete="off" spellcheck="false" maxlength="7" size="6" placeholder="HH:MM" id="setIn" aria-label="Standard day starts">
             <span class="unit">–</span>
-            <input type="time" id="setOut" aria-label="Standard day ends">
+            <input type="text" class="time24" inputmode="numeric" autocomplete="off" spellcheck="false" maxlength="7" size="6" placeholder="HH:MM" id="setOut" aria-label="Standard day ends">
           </span>
         </div>
       </div>
@@ -276,9 +276,9 @@
       <div class="set-row hours-row">
         <span>Usual hours</span>
         <span class="set-in">
-          <input type="time" id="wIn" aria-label="Usual start">
+          <input type="text" class="time24" inputmode="numeric" autocomplete="off" spellcheck="false" maxlength="7" size="6" placeholder="HH:MM" id="wIn" aria-label="Usual start">
           <span class="unit">–</span>
-          <input type="time" id="wOut" aria-label="Usual finish">
+          <input type="text" class="time24" inputmode="numeric" autocomplete="off" spellcheck="false" maxlength="7" size="6" placeholder="HH:MM" id="wOut" aria-label="Usual finish">
         </span>
       </div>
     </div>

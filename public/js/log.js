@@ -2,6 +2,7 @@
 import { S, saveDays } from './state.js';
 import { $, longDate, shortDate, nowHHMM, fmtHrs, plural, codeVars } from './format.js';
 import { askConfirm, flash } from './dialogs.js';
+import { isTime } from './timefield.js';
 import { DAY_NAMES, weekdayOf, minutesBetween, isWeekend } from '../lib/dates.js';
 
 /** Codes the calendar puts down by itself - not something you log. */
@@ -79,7 +80,9 @@ export function renderLog() {
  * In gets a nudge, in case it was meant as a daytime time.
  */
 function updateHrs() {
-  const inV = $('inTime').value, outV = $('outTime').value;
+  // Only whole times count - not one still being typed.
+  const valid = (v) => (isTime(v) ? v : '');
+  const inV = valid($('inTime').value), outV = valid($('outTime').value);
   const el = $('hrsOut');
   const overnight = inV && outV && outV < inV;
   let text = '';
@@ -98,8 +101,8 @@ function updateHrs() {
 
 /** What the punch button does next: In until there's an In time, then Out. */
 function punchMode() {
-  if (!$('inTime').value) return 'in';
-  return $('outTime').value ? 'again' : 'out';
+  if (!isTime($('inTime').value)) return 'in';
+  return isTime($('outTime').value) ? 'again' : 'out';
 }
 
 function updatePunch() {

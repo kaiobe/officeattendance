@@ -10,6 +10,7 @@
 import { localStore } from './store.js';
 import { createService, Download } from '../core/service.js';
 import { STATES } from '../core/holidays.js';
+import { NEW_PHONE_SETTINGS } from './defaults.js';
 import { runtime } from '../js/state.js';
 import { $, plural } from '../js/format.js';
 import { flash } from '../js/dialogs.js';
@@ -39,11 +40,8 @@ function guessState(tz) {
   }[zone] || 'VIC';
 }
 
-/** A new phone's starting point: a standard five-day, 38-hour week. */
-const NEW_PHONE = Object.freeze({
-  stdDayHours: 7.6, officeReqPct: 0.5, nonWorkingWeekday: -1,
-  defaultIn: '09:00', defaultOut: '17:00', holidayState: guessState(TZ),
-});
+/** A new phone's starting point (see defaults.js), with its state guessed from the time zone. */
+const NEW_PHONE = Object.freeze({ ...NEW_PHONE_SETTINGS, holidayState: guessState(TZ) });
 
 export function installLocal() {
   const store = localStore({ defaults: NEW_PHONE });

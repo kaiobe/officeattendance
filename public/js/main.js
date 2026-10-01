@@ -8,6 +8,7 @@ import { renderLog, wireLog, punch } from './log.js';
 import { renderGrid, renderLegend, renderKeyTotals, renderGridNote, renderYearList, allHourCols, setAllHourCols } from './grid.js';
 import { renderMonth, wireMonth, showMonth, endSelecting } from './month.js';
 import { wireSettings } from './settings.js';
+import { installTimeFields } from './timefield.js';
 import { addDays, datesBetween, fyOfDate, weekdayOf } from '../lib/dates.js';
 
 let APP_VERSION = '';
@@ -188,6 +189,7 @@ function handleShortcut() {
 export async function boot(appVersion) {
   APP_VERSION = appVersion;
   runtime.appVersion = appVersion;
+  installTimeFields();
   subscribe(renderAll);
   initTheme();
   renderThemeButton();

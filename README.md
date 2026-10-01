@@ -99,7 +99,8 @@ static file server can host it.
 
 - **First visit:** a setup screen asks for their public holiday state (guessed from the
   phone's time zone), day off each week, standard day, office target and usual hours.
-  A new phone starts on a 5-day, 7.6-hour week. **Restore a backup…** on that screen
+  A new phone starts on a 5-day week of 8.75-hour days, 09:00 to 17:45
+  (`public/local/defaults.js`). **Restore a backup…** on that screen
   moves someone to a new phone.
 - **After that:** it's the same app you use, with the tabs, punch button, month view and
   year grid. Backups and CSV exports go to the phone's share sheet (Files, Drive, email),
@@ -140,6 +141,7 @@ supply the same store interface, so there's one copy of every rule.
 | `PORT` | `8080` | Port inside the container |
 | `DB_FILE` | `/data/attendance.db` | SQLite file; keep it on a volume |
 | `TZ_NAME` | `Australia/Melbourne` | Decides what "today" means in the app |
+| `APP_TODAY` | unset | Testing only: pins today's date (`YYYY-MM-DD`) so date-sensitive checks repeat |
 
 ---
 
@@ -147,6 +149,11 @@ supply the same store interface, so there's one copy of every rule.
 
 **Log a day** — pick a date (arrow keys ← → also move a day, ↑ ↓ a week; the hint under
 the date says so), tap a code. It saves immediately. On an office day, *Standard day* fills your usual 07:30–17:00.
+
+Times are always 24-hour, whatever the computer's language settings: the boxes are
+plain text that read `HH:MM`. Type a time any natural way (`930`, `9:30`, `1745`,
+`5:45pm`) and it's tidied to `09:30` or `17:45` when you leave the box. Anything that
+isn't a time puts the box back and says so.
 
 **Punching in and out** is one button that does the next thing: it reads *In now* with
 the current time until there's an In time, then *Out now*. Punching codes the day Office.
