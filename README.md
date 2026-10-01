@@ -171,10 +171,36 @@ On by default, and nothing to sign up for:
 - **Two phones on one code.** Each backup carries a revision. If another phone backed
   up since this one last did, this one doesn't overwrite it: Settings asks whether to
   **Use the cloud copy** or **Keep this phone's**.
-- **Turning it off** deletes the copy in the cloud. Turning it on again makes a new
-  code.
+- **Turning it off** deletes the copy in the cloud, and any passkeys for it. Turning it
+  on again makes a new code.
 - Backups untouched for three years expire. Each is limited to 1 MB; a year of
   attendance is about 30 KB.
+
+### Passkeys
+
+A passkey can stand in for typing the recovery code. It's saved from the recovery code
+screen at setup or **Settings › Backup › Add passkey**. A new phone then restores with
+**Restore a backup… › Use a passkey**, using Face ID or a fingerprint.
+
+- **How.** The passkey gives the site a secret only it can produce (the WebAuthn PRF
+  extension), the same on every device it syncs to. From it the phone derives a lookup id
+  and a key, locks the recovery code with the key, and stores the locked code under
+  `/sync/key/<id>`. Restoring reverses that, then restores with the code as usual. The
+  Worker never sees the secret or the code, and checks nothing: without the passkey the
+  id can't be found and the code can't be opened.
+- **Where it works.** iCloud Keychain (iOS and macOS 18+), Google Password Manager on
+  Android, Windows Hello (from the February 2026 update), 1Password and Proton Pass.
+  Not Dashlane or NordPass; Bitwarden varies. Passkeys stay within one ecosystem, so
+  moving between iPhone and Android still needs the code.
+- **Proved before it's kept.** Saving a passkey locks the code, uploads it, fetches it
+  back and opens it. If the phone's passkeys can't give the secret, it says so, nothing
+  is saved, and the passkey manager is asked to drop the useless passkey.
+- **Tied to this address.** A passkey belongs to the site's domain
+  (`officeattendance.<subdomain>.workers.dev`). Moving the app to another address would
+  leave passkeys behind; the recovery code would still work.
+- **Removing** one deletes its locked code and asks the passkey manager to drop it.
+  Locked codes are re-saved monthly while the phone keeps the passkey, so they don't
+  expire.
 
 Cloudflare's free plan allows 1,000 KV writes a day across the account. Each backup is
 one write, and changes made close together are sent as one, so that's ample for a team
@@ -190,8 +216,9 @@ supply the same store interface, so there's one copy of every rule.
 `scripts/build-standalone.mjs` copies `public/` to `dist/`, points the page at
 `standalone.js`, and adds a service worker and Cloudflare's `_headers`. The cloud
 backup is `public/local/cloud.js` (the code, encryption and sending, with retries and
-the revision check), `public/local/cloud-ui.js` (its screens) and `worker/index.js`
-(stores what it's given, checks the revision, never sees a key).
+the revision check), `public/local/passkey.js` (passkeys that unlock the code),
+`public/local/cloud-ui.js` (the screens) and `worker/index.js` (stores what it's given,
+checks the revision, never sees a key).
 
 ---
 
@@ -492,7 +519,7 @@ public/
     validate.js   every value from outside is checked here before it's stored
     codes.js, csv.js, settings.js, errors.js
   local/        the standalone version: localStorage store, first run, backups, offline,
-                cloud.js + cloud-ui.js (encrypted cloud backup)
+                cloud.js + passkey.js + cloud-ui.js (encrypted cloud backup, passkeys)
   manifest.webmanifest, icons/   what makes it installable on a phone
   lib/dates.js  calendar helpers shared by everything - one copy, no build
 worker/index.js the Cloudflare Worker: stores the standalone version's encrypted backups in KV
@@ -634,6 +661,7 @@ There is no login in the app itself — it relies on the reverse proxy in front 
   recovery code; the Worker only stores ciphertext under an id derived from the same
   code, and refuses cross-site requests, bodies that aren't an encrypted backup, and
   anything over 1 MB. An id is 256 bits from an 80-bit code, so backups can't be found
-  by guessing.
+  by guessing. Passkeys add a locked copy of the code, under an id only the passkey's
+  secret can produce.
 - **Container.** Runs as a non-root user that can write only to `/data`, with no Linux
   capabilities and no privilege escalation.

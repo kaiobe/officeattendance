@@ -10,6 +10,23 @@ Versions are `MAJOR.MINOR.PATCH`:
 `npm run bump [major|minor|patch]` moves the number in every place it appears
 and opens an entry here. Nothing else should edit a version by hand.
 
+## 1.14.0 - 2026-10-01
+
+- **Restore with a passkey.** Cloud backup can now be unlocked with Face ID or a
+  fingerprint instead of typing the recovery code.
+  - Save one from the recovery code screen at setup, or Settings › Backup › **Add
+    passkey**. On a new phone, **Restore a backup… › Use a passkey**.
+  - The passkey gives the phone a secret only it can produce (WebAuthn PRF). That secret
+    locks the recovery code, and the locked code is kept beside the backup. The site
+    never sees the secret or the code.
+  - Passkeys sync within iCloud Keychain, Google Password Manager or 1Password. The
+    recovery code is still the way back between iPhone and Android, or if a passkey is
+    lost.
+  - Saving a passkey proves the whole round trip first. Where a phone's passkeys can't
+    do this, it says so and nothing is saved.
+  - Settings lists the passkeys, each with **Remove**. Turning cloud backup off removes
+    them too.
+
 ## 1.13.0 - 2026-10-01
 
 - **Cloud backup for the standalone version.** Each phone backs itself up, encrypted,

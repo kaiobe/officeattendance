@@ -4,6 +4,7 @@
  * Settings › Backup.
  */
 import { createCloud, newCode, normaliseCode } from './cloud.js';
+import { createPasskeys, passkeysAvailable } from './passkey.js';
 import { $, esc } from '../js/format.js';
 import { flash, askConfirm } from '../js/dialogs.js';
 import { S, loadState } from '../js/state.js';
@@ -18,6 +19,8 @@ function ago(ts) {
   return `${d} ${d === 1 ? 'day' : 'days'} ago`;
 }
 
+const day = (ts) => new Date(ts).toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' });
+
 export function setupCloud({ store, transport }) {
   let restoring = false;
   const cloud = createCloud({
@@ -25,6 +28,9 @@ export function setupCloud({ store, transport }) {
     snapshot: async () => JSON.parse((await transport('GET', '/api/export.json')).body),
     onChange: render,
   });
+  const passkeys = createPasskeys({ store, cloud, onChange: () => render() });
+  let canPasskey = false;
+  passkeysAvailable().then((v) => { canPasskey = v; render(); });
 
   /* ---------- the recovery code, shown once ---------- */
 
@@ -38,6 +44,24 @@ export function setupCloud({ store, transport }) {
       catch { flash('Select the code and copy it', true); }
     };
     $('codeShare').onclick = () => navigator.share({ title: 'Office Attendance recovery code', text: `Office Attendance recovery code: ${code}` }).catch(() => {});
+    // The first time, offer a passkey as well.
+    $('codePasskeyBox').hidden = !(first && canPasskey);
+    $('codePasskey').hidden = false;
+    $('codePasskeyMsg').textContent = '';
+    $('codePasskeyMsg').className = 'dlg-err';
+    $('codePasskey').onclick = async () => {
+      $('codePasskey').disabled = true;
+      try {
+        await passkeys.add();
+        $('codePasskey').hidden = true;
+        $('codePasskeyMsg').className = 'dlg-err ok';
+        $('codePasskeyMsg').textContent = 'Passkey saved. Restore with it on your next phone.';
+      } catch (e) {
+        $('codePasskeyMsg').textContent = e.message;
+      } finally {
+        $('codePasskey').disabled = false;
+      }
+    };
     return new Promise((resolve) => {
       // The first time, it has to be acknowledged; later, Escape just closes it.
       const onCancel = (e) => {
@@ -63,27 +87,33 @@ export function setupCloud({ store, transport }) {
     $('restoreErr').textContent = '';
     $('restoreCode').value = '';
     $('restoreFile').hidden = !file;
+    $('restorePasskeyBox').hidden = !canPasskey;
     return new Promise((resolve) => {
       const onCancel = () => { dlg.removeEventListener('cancel', onCancel); resolve(false); };
       dlg.addEventListener('cancel', onCancel);
       const finish = (v) => { dlg.removeEventListener('cancel', onCancel); dlg.close(); resolve(v); };
       $('restoreCancel').onclick = () => finish(false);
       $('restoreFile').onclick = () => { finish(false); file(); };
-      $('restoreGo').onclick = async () => {
+      /** Bring in the backup a code points to; `entry` is the passkey that gave the code, if one did. */
+      const restore = async (getCode) => {
         $('restoreErr').textContent = '';
-        $('restoreGo').disabled = true;
+        $('restoreGo').disabled = $('restorePasskey').disabled = true;
         try {
-          const got = await cloud.fetchBackup($('restoreCode').value);
+          const { code, entry } = await getCode();
+          const got = await cloud.fetchBackup(code);
           const n = Object.keys(got.data.days || {}).length;
           if (confirmReplace && !(await askConfirm({
             title: 'Replace this phone\'s data?',
             body: `The backup holds ${n} days${got.updated ? `, saved ${ago(got.updated)}` : ''}. Everything on this phone is replaced by it, and this phone backs up to that code from now on.`,
             ok: 'Replace',
-          }))) { $('restoreGo').disabled = false; return; }
+          }))) return;
           restoring = true;
           await transport('POST', '/api/import', { days: got.data.days, settings: got.data.settings, replace: true });
           restoring = false;
+          // Passkeys made for a different code don't unlock this one.
+          if (cloud.status().code && cloud.status().code !== got.code) passkeys.forgetAll();
           cloud.adopt(got.code, { rev: got.rev, last: got.updated });
+          if (entry) passkeys.remember(entry);
           store.setMeta('lastBackup', Date.now());
           flash(`Restored ${n} days`);
           finish(true);
@@ -91,9 +121,11 @@ export function setupCloud({ store, transport }) {
           restoring = false;
           $('restoreErr').textContent = e.message;
         } finally {
-          $('restoreGo').disabled = false;
+          $('restoreGo').disabled = $('restorePasskey').disabled = false;
         }
       };
+      $('restoreGo').onclick = () => restore(async () => ({ code: $('restoreCode').value }));
+      $('restorePasskey').onclick = () => restore(() => passkeys.recover());
       $('restoreCode').onkeydown = (e) => { if (e.key === 'Enter') $('restoreGo').click(); };
       dlg.showModal();
       $('restoreCode').focus();
@@ -125,10 +157,25 @@ export function setupCloud({ store, transport }) {
       line.className = `cloud-status ${st.pending && st.error ? 'warn' : 'ok'}`;
       line.innerHTML = `<b>Cloud backup is on.</b> ${when}`;
       acts.push(['cloudShowCode', 'ghost', 'Show code']);
+      if (canPasskey) acts.push(['cloudPasskeyAdd', 'ghost', 'Add passkey']);
       acts.push(['cloudRestore', 'ghost', 'Restore…']);
       acts.push(['cloudOff', 'ghost danger', 'Turn off']);
     }
     $('cloudActions').innerHTML = acts.map(([id, cls, label]) => `<button class="${cls}" id="${id}">${label}</button>`).join('');
+    const keys = st.on && !st.conflict ? passkeys.list() : [];
+    $('cloudPasskeys').hidden = !keys.length;
+    $('cloudPasskeys').innerHTML = keys.map((p) => `<li><span><b>Passkey</b> added ${esc(day(p.added))}</span><button class="ghost" data-passkey="${esc(p.id)}">Remove</button></li>`).join('');
+    for (const b of $('cloudPasskeys').querySelectorAll('button[data-passkey]')) {
+      b.onclick = async () => {
+        if (!(await askConfirm({
+          title: 'Remove this passkey?',
+          body: 'It won\'t restore your backup any more. Your recovery code still will. You can also delete the passkey from your password manager.',
+          ok: 'Remove',
+        }))) return;
+        await passkeys.remove(b.dataset.passkey);
+        flash('Passkey removed');
+      };
+    }
     const on = (id, fn) => { const b = $(id); if (b) b.onclick = fn; };
     on('cloudOn', async () => {
       const code = newCode();
@@ -137,13 +184,18 @@ export function setupCloud({ store, transport }) {
       cloud.flush();
     });
     on('cloudShowCode', () => showCode(st.code));
+    on('cloudPasskeyAdd', async () => {
+      try { await passkeys.add(); flash('Passkey saved'); }
+      catch (e) { flash(e.message, true); }
+    });
     on('cloudRestore', async () => { if (await restoreDialog({ confirmReplace: true })) await loadState(S.fy); });
     on('cloudOff', async () => {
       if (!(await askConfirm({
         title: 'Turn off cloud backup?',
-        body: 'The copy in the cloud is deleted, and your data stays only on this phone. You can turn it on again later with a new code.',
+        body: 'The copy in the cloud is deleted, along with any passkeys for it, and your data stays only on this phone. You can turn it on again later with a new code.',
         ok: 'Turn off',
       }))) return;
+      await passkeys.removeAll();
       await cloud.turnOff();
       flash('Cloud backup is off');
     });
@@ -168,6 +220,7 @@ export function setupCloud({ store, transport }) {
   function start() {
     render();
     cloud.flush();
+    passkeys.renew();
     window.addEventListener('online', () => cloud.flush());
     const away = () => { if (document.visibilityState === 'hidden') cloud.flush({ keepalive: true }); };
     document.addEventListener('visibilitychange', away);
@@ -177,6 +230,7 @@ export function setupCloud({ store, transport }) {
 
   return {
     cloud,
+    passkeys,
     afterChange: () => { if (!restoring) cloud.schedule(); },
     showCode,
     restoreDialog,

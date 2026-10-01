@@ -18,11 +18,19 @@
  *                       a mismatch is 409, with the current revision.
  *                       If-Match: * replaces whatever is there.
  *   DELETE /sync/<id>   remove it (turning cloud backup off)
+ *
+ * And for passkeys (public/local/passkey.js), a recovery code locked with a
+ * key only that passkey can produce, under an id derived from the same secret:
+ *
+ *   GET    /sync/key/<id>   the locked code, or 404
+ *   PUT    /sync/key/<id>   store it (a few hundred bytes; replaces any)
+ *   DELETE /sync/key/<id>   remove it
  */
 
 const ID = /^[0-9a-f]{64}$/;
 const MAX_BYTES = 1024 * 1024;                 // a backup is ~30 KB a year; this is decades
 const KEEP_SECONDS = 3 * 365 * 24 * 3600;      // unused for three years: let it go (each backup renews it)
+const MAX_KEY_BYTES = 4096;                    // a locked recovery code is ~150 bytes
 
 const HEADERS = {
   'content-type': 'application/json; charset=utf-8',
@@ -32,15 +40,51 @@ const HEADERS = {
 };
 const reply = (status, body, extra = {}) => new Response(JSON.stringify(body), { status, headers: { ...HEADERS, ...extra } });
 
+/** A JSON body shaped like {v:1, iv, ct}, or a Response saying what's wrong. */
+async function readBox(request, maxBytes) {
+  if ((request.headers.get('content-type') || '').split(';')[0].trim() !== 'application/json') {
+    return reply(415, { error: 'send JSON' });
+  }
+  const body = await request.text();
+  if (body.length > maxBytes) return reply(413, { error: 'too large' });
+  let parsed;
+  try { parsed = JSON.parse(body); } catch { return reply(400, { error: 'not JSON' }); }
+  if (!parsed || parsed.v !== 1 || typeof parsed.iv !== 'string' || typeof parsed.ct !== 'string') {
+    return reply(400, { error: 'not an encrypted backup' });
+  }
+  return body;
+}
+
+/** /sync/key/<id>: a passkey's locked recovery code. No revisions: only that passkey can work out the id. */
+async function handleKey(request, env, id) {
+  const key = `k:${id}`;
+  if (request.method === 'GET') {
+    const value = await env.BACKUPS.get(key);
+    return value == null ? reply(404, { error: 'no passkey backup here' }) : new Response(value, { status: 200, headers: HEADERS });
+  }
+  if (request.method === 'PUT') {
+    const body = await readBox(request, MAX_KEY_BYTES);
+    if (body instanceof Response) return body;
+    await env.BACKUPS.put(key, body, { expirationTtl: KEEP_SECONDS });
+    return reply(200, { saved: true });
+  }
+  if (request.method === 'DELETE') {
+    await env.BACKUPS.delete(key);
+    return reply(200, { deleted: true });
+  }
+  return reply(405, { error: 'use GET, PUT or DELETE' }, { allow: 'GET, PUT, DELETE' });
+}
+
 export async function handleSync(request, env) {
   const url = new URL(request.url);
-  const m = url.pathname.match(/^\/sync\/([^/]+)$/);
-  if (!m || !ID.test(m[1])) return reply(404, { error: 'not found' });
+  const m = url.pathname.match(/^\/sync\/(?:(key)\/)?([^/]+)$/);
+  if (!m || !ID.test(m[2])) return reply(404, { error: 'not found' });
   if (!env.BACKUPS) return reply(503, { error: 'cloud backup is not set up on this site' });
   // Only this site's own pages: a browser marks requests from other sites.
   if (request.headers.get('sec-fetch-site') === 'cross-site') return reply(403, { error: 'cross-site request refused' });
+  if (m[1]) return handleKey(request, env, m[2]);
 
-  const key = `b:${m[1]}`;
+  const key = `b:${m[2]}`;
   if (request.method === 'GET') {
     const { value, metadata } = await env.BACKUPS.getWithMetadata(key);
     if (value == null) return reply(404, { error: 'no backup for this code' });
@@ -48,16 +92,8 @@ export async function handleSync(request, env) {
   }
 
   if (request.method === 'PUT') {
-    if ((request.headers.get('content-type') || '').split(';')[0].trim() !== 'application/json') {
-      return reply(415, { error: 'send JSON' });
-    }
-    const body = await request.text();
-    if (body.length > MAX_BYTES) return reply(413, { error: 'backup too large' });
-    let parsed;
-    try { parsed = JSON.parse(body); } catch { return reply(400, { error: 'not JSON' }); }
-    if (!parsed || parsed.v !== 1 || typeof parsed.iv !== 'string' || typeof parsed.ct !== 'string') {
-      return reply(400, { error: 'not an encrypted backup' });
-    }
+    const body = await readBox(request, MAX_BYTES);
+    if (body instanceof Response) return body;
     const expect = (request.headers.get('if-match') || '').replace(/"/g, '').trim();
     if (!expect) return reply(428, { error: 'If-Match is required' });
     const current = await env.BACKUPS.getWithMetadata(key);

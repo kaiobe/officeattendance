@@ -589,6 +589,8 @@ button.dayline:focus-visible { outline: 2px solid var(--accent); outline-offset:
 .set-item.danger .set-item-t > span { color: var(--critical); }
 .set-backup { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
 .set-backup .ghost { min-height: 44px; display: grid; place-items: center; text-align: center; }
+/* cloud backup's buttons: two across, so four (with passkeys) make a tidy square */
+#cloudActions { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .ghost.icon-sm { width: 34px; height: 32px; padding: 0; display: grid; place-items: center; }
 
 /* ---------- selecting a range by touch (Month tab) ---------- */
@@ -688,3 +690,18 @@ td.stat.est { font-style: italic; }
 .field-label { font-size: 12px; font-weight: 600; color: var(--text-2); }
 .linkish { justify-self: start; border: 0; background: none; padding: 0; color: var(--accent); font-size: 13px; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
 .linkish[hidden] { display: none; }
+.passkeys { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.passkeys[hidden] { display: none; }
+.passkeys li { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 8px 12px; border: 1px solid var(--border); border-radius: 10px; font-size: 13px; color: var(--text-2); }
+.passkeys li b { color: var(--text-1); font-weight: 600; }
+.passkeys li button { flex: none; min-height: 32px; padding: 0 12px; font-size: 13px; }
+.passkey-offer { display: grid; gap: 8px; margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--border); }
+.passkey-offer[hidden], .passkey-use[hidden] { display: none; }
+.passkey-offer p { margin: 0; font-size: 13px; line-height: 1.45; color: var(--text-2); }
+.passkey-offer button { justify-self: start; }
+.passkey-offer .dlg-err:empty { display: none; }
+.passkey-offer .dlg-err.ok { color: var(--good-text); }
+.passkey-use { display: grid; gap: 10px; margin-bottom: 4px; }
+.passkey-use button { width: 100%; min-height: 46px; }
+.or { display: flex; align-items: center; gap: 10px; margin: 0; font-size: 12px; color: var(--text-2); }
+.or::before, .or::after { content: ""; flex: 1; border-top: 1px solid var(--border); }

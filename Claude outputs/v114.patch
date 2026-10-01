@@ -1,0 +1,911 @@
+diff --git a/CHANGELOG.md b/CHANGELOG.md
+index 9579b06..bec7ac0 100644
+--- a/CHANGELOG.md
++++ b/CHANGELOG.md
+@@ -10,6 +10,23 @@ Versions are `MAJOR.MINOR.PATCH`:
+ `npm run bump [major|minor|patch]` moves the number in every place it appears
+ and opens an entry here. Nothing else should edit a version by hand.
+ 
++## 1.14.0 - 2026-10-01
++
++- **Restore with a passkey.** Cloud backup can now be unlocked with Face ID or a
++  fingerprint instead of typing the recovery code.
++  - Save one from the recovery code screen at setup, or Settings › Backup › **Add
++    passkey**. On a new phone, **Restore a backup… › Use a passkey**.
++  - The passkey gives the phone a secret only it can produce (WebAuthn PRF). That secret
++    locks the recovery code, and the locked code is kept beside the backup. The site
++    never sees the secret or the code.
++  - Passkeys sync within iCloud Keychain, Google Password Manager or 1Password. The
++    recovery code is still the way back between iPhone and Android, or if a passkey is
++    lost.
++  - Saving a passkey proves the whole round trip first. Where a phone's passkeys can't
++    do this, it says so and nothing is saved.
++  - Settings lists the passkeys, each with **Remove**. Turning cloud backup off removes
++    them too.
++
+ ## 1.13.0 - 2026-10-01
+ 
+ - **Cloud backup for the standalone version.** Each phone backs itself up, encrypted,
+diff --git a/README.md b/README.md
+index fc87d31..e1343bc 100644
+--- a/README.md
++++ b/README.md
+@@ -171,11 +171,37 @@ On by default, and nothing to sign up for:
+ - **Two phones on one code.** Each backup carries a revision. If another phone backed
+   up since this one last did, this one doesn't overwrite it: Settings asks whether to
+   **Use the cloud copy** or **Keep this phone's**.
+-- **Turning it off** deletes the copy in the cloud. Turning it on again makes a new
+-  code.
++- **Turning it off** deletes the copy in the cloud, and any passkeys for it. Turning it
++  on again makes a new code.
+ - Backups untouched for three years expire. Each is limited to 1 MB; a year of
+   attendance is about 30 KB.
+ 
++### Passkeys
++
++A passkey can stand in for typing the recovery code. It's saved from the recovery code
++screen at setup or **Settings › Backup › Add passkey**. A new phone then restores with
++**Restore a backup… › Use a passkey**, using Face ID or a fingerprint.
++
++- **How.** The passkey gives the site a secret only it can produce (the WebAuthn PRF
++  extension), the same on every device it syncs to. From it the phone derives a lookup id
++  and a key, locks the recovery code with the key, and stores the locked code under
++  `/sync/key/<id>`. Restoring reverses that, then restores with the code as usual. The
++  Worker never sees the secret or the code, and checks nothing: without the passkey the
++  id can't be found and the code can't be opened.
++- **Where it works.** iCloud Keychain (iOS and macOS 18+), Google Password Manager on
++  Android, Windows Hello (from the February 2026 update), 1Password and Proton Pass.
++  Not Dashlane or NordPass; Bitwarden varies. Passkeys stay within one ecosystem, so
++  moving between iPhone and Android still needs the code.
++- **Proved before it's kept.** Saving a passkey locks the code, uploads it, fetches it
++  back and opens it. If the phone's passkeys can't give the secret, it says so, nothing
++  is saved, and the passkey manager is asked to drop the useless passkey.
++- **Tied to this address.** A passkey belongs to the site's domain
++  (`officeattendance.<subdomain>.workers.dev`). Moving the app to another address would
++  leave passkeys behind; the recovery code would still work.
++- **Removing** one deletes its locked code and asks the passkey manager to drop it.
++  Locked codes are re-saved monthly while the phone keeps the passkey, so they don't
++  expire.
++
+ Cloudflare's free plan allows 1,000 KV writes a day across the account. Each backup is
+ one write, and changes made close together are sent as one, so that's ample for a team
+ logging their days, though not for hundreds of people.
+@@ -190,8 +216,9 @@ supply the same store interface, so there's one copy of every rule.
+ `scripts/build-standalone.mjs` copies `public/` to `dist/`, points the page at
+ `standalone.js`, and adds a service worker and Cloudflare's `_headers`. The cloud
+ backup is `public/local/cloud.js` (the code, encryption and sending, with retries and
+-the revision check), `public/local/cloud-ui.js` (its screens) and `worker/index.js`
+-(stores what it's given, checks the revision, never sees a key).
++the revision check), `public/local/passkey.js` (passkeys that unlock the code),
++`public/local/cloud-ui.js` (the screens) and `worker/index.js` (stores what it's given,
++checks the revision, never sees a key).
+ 
+ ---
+ 
+@@ -492,7 +519,7 @@ public/
+     validate.js   every value from outside is checked here before it's stored
+     codes.js, csv.js, settings.js, errors.js
+   local/        the standalone version: localStorage store, first run, backups, offline,
+-                cloud.js + cloud-ui.js (encrypted cloud backup)
++                cloud.js + passkey.js + cloud-ui.js (encrypted cloud backup, passkeys)
+   manifest.webmanifest, icons/   what makes it installable on a phone
+   lib/dates.js  calendar helpers shared by everything - one copy, no build
+ worker/index.js the Cloudflare Worker: stores the standalone version's encrypted backups in KV
+@@ -634,6 +661,7 @@ There is no login in the app itself — it relies on the reverse proxy in front
+   recovery code; the Worker only stores ciphertext under an id derived from the same
+   code, and refuses cross-site requests, bodies that aren't an encrypted backup, and
+   anything over 1 MB. An id is 256 bits from an 80-bit code, so backups can't be found
+-  by guessing.
++  by guessing. Passkeys add a locked copy of the code, under an id only the passkey's
++  secret can produce.
+ - **Container.** Runs as a non-root user that can write only to `/data`, with no Linux
+   capabilities and no privilege escalation.
+diff --git a/package.json b/package.json
+index 10f679d..ff46d04 100644
+--- a/package.json
++++ b/package.json
+@@ -1,6 +1,6 @@
+ {
+   "name": "office-attendance",
+-  "version": "1.13.0",
++  "version": "1.14.0",
+   "private": true,
+   "type": "module",
+   "description": "Self-hosted office attendance tracker (days + hours) for an Oct-Sep financial year",
+diff --git a/public/app.js b/public/app.js
+index dec70ba..3fa15fb 100644
+--- a/public/app.js
++++ b/public/app.js
+@@ -11,6 +11,6 @@
+  */
+ import { boot } from './js/main.js';
+ 
+-const APP_VERSION = '1.13.0';
++const APP_VERSION = '1.14.0';
+ 
+ boot(APP_VERSION);
+diff --git a/public/index.html b/public/index.html
+index 198f881..59be83f 100644
+--- a/public/index.html
++++ b/public/index.html
+@@ -236,6 +236,7 @@
+       <div class="cloud" id="cloudBox" hidden>
+         <p class="cloud-status" id="cloudStatus" role="status"></p>
+         <div class="set-backup" id="cloudActions"></div>
++        <ul class="passkeys" id="cloudPasskeys" hidden></ul>
+       </div>
+       <div class="set-backup">
+         <a class="ghost linkbtn" id="csvLink" download>Export CSV</a>
+@@ -310,12 +311,21 @@
+       <button class="ghost" id="codeShare">Share&hellip;</button>
+       <button class="primary" id="codeDone">I've saved it</button>
+     </div>
++    <div class="passkey-offer" id="codePasskeyBox" hidden>
++      <p>Save a passkey as well, and your next phone restores with Face ID or a fingerprint. Keep the code too: it's the way back if you switch between iPhone and Android.</p>
++      <button class="ghost" id="codePasskey">Save a passkey&hellip;</button>
++      <p class="dlg-err" id="codePasskeyMsg" role="status"></p>
++    </div>
+   </div>
+ </dialog>
+ 
+ <dialog id="restoreDlg" aria-labelledby="restoreTitle">
+   <div class="card-head"><h2 id="restoreTitle">Restore a backup</h2></div>
+   <div class="dlg-body">
++    <div class="passkey-use" id="restorePasskeyBox" hidden>
++      <button class="primary" id="restorePasskey">Use a passkey</button>
++      <p class="or"><span>or type your recovery code</span></p>
++    </div>
+     <label class="field-label" for="restoreCode">Recovery code</label>
+     <input type="text" id="restoreCode" class="code-input" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="XXXX-XXXX-XXXX-XXXX" maxlength="24">
+     <p class="dlg-err" id="restoreErr" role="alert"></p>
+diff --git a/public/local/cloud-ui.js b/public/local/cloud-ui.js
+index 3209ab4..7571d49 100644
+--- a/public/local/cloud-ui.js
++++ b/public/local/cloud-ui.js
+@@ -4,6 +4,7 @@
+  * Settings › Backup.
+  */
+ import { createCloud, newCode, normaliseCode } from './cloud.js';
++import { createPasskeys, passkeysAvailable } from './passkey.js';
+ import { $, esc } from '../js/format.js';
+ import { flash, askConfirm } from '../js/dialogs.js';
+ import { S, loadState } from '../js/state.js';
+@@ -18,6 +19,8 @@ function ago(ts) {
+   return `${d} ${d === 1 ? 'day' : 'days'} ago`;
+ }
+ 
++const day = (ts) => new Date(ts).toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' });
++
+ export function setupCloud({ store, transport }) {
+   let restoring = false;
+   const cloud = createCloud({
+@@ -25,6 +28,9 @@ export function setupCloud({ store, transport }) {
+     snapshot: async () => JSON.parse((await transport('GET', '/api/export.json')).body),
+     onChange: render,
+   });
++  const passkeys = createPasskeys({ store, cloud, onChange: () => render() });
++  let canPasskey = false;
++  passkeysAvailable().then((v) => { canPasskey = v; render(); });
+ 
+   /* ---------- the recovery code, shown once ---------- */
+ 
+@@ -38,6 +44,24 @@ export function setupCloud({ store, transport }) {
+       catch { flash('Select the code and copy it', true); }
+     };
+     $('codeShare').onclick = () => navigator.share({ title: 'Office Attendance recovery code', text: `Office Attendance recovery code: ${code}` }).catch(() => {});
++    // The first time, offer a passkey as well.
++    $('codePasskeyBox').hidden = !(first && canPasskey);
++    $('codePasskey').hidden = false;
++    $('codePasskeyMsg').textContent = '';
++    $('codePasskeyMsg').className = 'dlg-err';
++    $('codePasskey').onclick = async () => {
++      $('codePasskey').disabled = true;
++      try {
++        await passkeys.add();
++        $('codePasskey').hidden = true;
++        $('codePasskeyMsg').className = 'dlg-err ok';
++        $('codePasskeyMsg').textContent = 'Passkey saved. Restore with it on your next phone.';
++      } catch (e) {
++        $('codePasskeyMsg').textContent = e.message;
++      } finally {
++        $('codePasskey').disabled = false;
++      }
++    };
+     return new Promise((resolve) => {
+       // The first time, it has to be acknowledged; later, Escape just closes it.
+       const onCancel = (e) => {
+@@ -63,27 +87,33 @@ export function setupCloud({ store, transport }) {
+     $('restoreErr').textContent = '';
+     $('restoreCode').value = '';
+     $('restoreFile').hidden = !file;
++    $('restorePasskeyBox').hidden = !canPasskey;
+     return new Promise((resolve) => {
+       const onCancel = () => { dlg.removeEventListener('cancel', onCancel); resolve(false); };
+       dlg.addEventListener('cancel', onCancel);
+       const finish = (v) => { dlg.removeEventListener('cancel', onCancel); dlg.close(); resolve(v); };
+       $('restoreCancel').onclick = () => finish(false);
+       $('restoreFile').onclick = () => { finish(false); file(); };
+-      $('restoreGo').onclick = async () => {
++      /** Bring in the backup a code points to; `entry` is the passkey that gave the code, if one did. */
++      const restore = async (getCode) => {
+         $('restoreErr').textContent = '';
+-        $('restoreGo').disabled = true;
++        $('restoreGo').disabled = $('restorePasskey').disabled = true;
+         try {
+-          const got = await cloud.fetchBackup($('restoreCode').value);
++          const { code, entry } = await getCode();
++          const got = await cloud.fetchBackup(code);
+           const n = Object.keys(got.data.days || {}).length;
+           if (confirmReplace && !(await askConfirm({
+             title: 'Replace this phone\'s data?',
+             body: `The backup holds ${n} days${got.updated ? `, saved ${ago(got.updated)}` : ''}. Everything on this phone is replaced by it, and this phone backs up to that code from now on.`,
+             ok: 'Replace',
+-          }))) { $('restoreGo').disabled = false; return; }
++          }))) return;
+           restoring = true;
+           await transport('POST', '/api/import', { days: got.data.days, settings: got.data.settings, replace: true });
+           restoring = false;
++          // Passkeys made for a different code don't unlock this one.
++          if (cloud.status().code && cloud.status().code !== got.code) passkeys.forgetAll();
+           cloud.adopt(got.code, { rev: got.rev, last: got.updated });
++          if (entry) passkeys.remember(entry);
+           store.setMeta('lastBackup', Date.now());
+           flash(`Restored ${n} days`);
+           finish(true);
+@@ -91,9 +121,11 @@ export function setupCloud({ store, transport }) {
+           restoring = false;
+           $('restoreErr').textContent = e.message;
+         } finally {
+-          $('restoreGo').disabled = false;
++          $('restoreGo').disabled = $('restorePasskey').disabled = false;
+         }
+       };
++      $('restoreGo').onclick = () => restore(async () => ({ code: $('restoreCode').value }));
++      $('restorePasskey').onclick = () => restore(() => passkeys.recover());
+       $('restoreCode').onkeydown = (e) => { if (e.key === 'Enter') $('restoreGo').click(); };
+       dlg.showModal();
+       $('restoreCode').focus();
+@@ -125,10 +157,25 @@ export function setupCloud({ store, transport }) {
+       line.className = `cloud-status ${st.pending && st.error ? 'warn' : 'ok'}`;
+       line.innerHTML = `<b>Cloud backup is on.</b> ${when}`;
+       acts.push(['cloudShowCode', 'ghost', 'Show code']);
++      if (canPasskey) acts.push(['cloudPasskeyAdd', 'ghost', 'Add passkey']);
+       acts.push(['cloudRestore', 'ghost', 'Restore…']);
+       acts.push(['cloudOff', 'ghost danger', 'Turn off']);
+     }
+     $('cloudActions').innerHTML = acts.map(([id, cls, label]) => `<button class="${cls}" id="${id}">${label}</button>`).join('');
++    const keys = st.on && !st.conflict ? passkeys.list() : [];
++    $('cloudPasskeys').hidden = !keys.length;
++    $('cloudPasskeys').innerHTML = keys.map((p) => `<li><span><b>Passkey</b> added ${esc(day(p.added))}</span><button class="ghost" data-passkey="${esc(p.id)}">Remove</button></li>`).join('');
++    for (const b of $('cloudPasskeys').querySelectorAll('button[data-passkey]')) {
++      b.onclick = async () => {
++        if (!(await askConfirm({
++          title: 'Remove this passkey?',
++          body: 'It won\'t restore your backup any more. Your recovery code still will. You can also delete the passkey from your password manager.',
++          ok: 'Remove',
++        }))) return;
++        await passkeys.remove(b.dataset.passkey);
++        flash('Passkey removed');
++      };
++    }
+     const on = (id, fn) => { const b = $(id); if (b) b.onclick = fn; };
+     on('cloudOn', async () => {
+       const code = newCode();
+@@ -137,13 +184,18 @@ export function setupCloud({ store, transport }) {
+       cloud.flush();
+     });
+     on('cloudShowCode', () => showCode(st.code));
++    on('cloudPasskeyAdd', async () => {
++      try { await passkeys.add(); flash('Passkey saved'); }
++      catch (e) { flash(e.message, true); }
++    });
+     on('cloudRestore', async () => { if (await restoreDialog({ confirmReplace: true })) await loadState(S.fy); });
+     on('cloudOff', async () => {
+       if (!(await askConfirm({
+         title: 'Turn off cloud backup?',
+-        body: 'The copy in the cloud is deleted, and your data stays only on this phone. You can turn it on again later with a new code.',
++        body: 'The copy in the cloud is deleted, along with any passkeys for it, and your data stays only on this phone. You can turn it on again later with a new code.',
+         ok: 'Turn off',
+       }))) return;
++      await passkeys.removeAll();
+       await cloud.turnOff();
+       flash('Cloud backup is off');
+     });
+@@ -168,6 +220,7 @@ export function setupCloud({ store, transport }) {
+   function start() {
+     render();
+     cloud.flush();
++    passkeys.renew();
+     window.addEventListener('online', () => cloud.flush());
+     const away = () => { if (document.visibilityState === 'hidden') cloud.flush({ keepalive: true }); };
+     document.addEventListener('visibilitychange', away);
+@@ -177,6 +230,7 @@ export function setupCloud({ store, transport }) {
+ 
+   return {
+     cloud,
++    passkeys,
+     afterChange: () => { if (!restoring) cloud.schedule(); },
+     showCode,
+     restoreDialog,
+diff --git a/public/local/passkey.js b/public/local/passkey.js
+new file mode 100644
+index 0000000..d9ad10c
+--- /dev/null
++++ b/public/local/passkey.js
+@@ -0,0 +1,227 @@
++/**
++ * Passkeys for cloud backup: restore on a new phone with Face ID or a
++ * fingerprint instead of typing the recovery code.
++ *
++ * A passkey can give this site a secret of its own (the WebAuthn PRF
++ * extension): the same 32 bytes on every device the passkey syncs to, and
++ * never stored by the site. From that secret, HKDF-SHA-256 derives
++ *   - a lookup id, and
++ *   - an AES-GCM key that locks the recovery code.
++ * The locked code is kept by the Worker under the lookup id (/sync/key/<id>).
++ * Restoring asks for any passkey this site made, derives the same two things,
++ * fetches the locked code and unlocks it - then it's an ordinary code restore.
++ *
++ * So the recovery code is still what the backup hangs on, and still the way
++ * back when a passkey can't help (a move between iPhone and Android, say).
++ * Nothing about it is checked server-side: without the passkey, the id can't
++ * be worked out and the locked code can't be opened.
++ *
++ * The passkey belongs to the address the page is served from, so it only works
++ * there.
++ */
++import { normaliseCode } from './cloud.js';
++
++const enc = new TextEncoder();
++const RENEW_MS = 30 * 86400000;           // re-save the locked codes monthly, so they don't expire
++
++const b64 = (buf) => btoa(String.fromCharCode(...new Uint8Array(buf)));
++const unb64 = (s) => Uint8Array.from(atob(s), (c) => c.charCodeAt(0));
++const b64url = (buf) => b64(buf).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
++const unb64url = (s) => unb64(s.replace(/-/g, '+').replace(/_/g, '/') + '==='.slice((s.length + 3) % 4));
++const hex = (buf) => [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, '0')).join('');
++const random = (n) => crypto.getRandomValues(new Uint8Array(n));
++
++/** What the passkey is asked to turn into its secret. Fixed, so every device gets the same answer. */
++const prfSalt = () => crypto.subtle.digest('SHA-256', enc.encode('office-attendance passkey prf v1'));
++
++/** The lookup id and the key that locks the code, from a passkey's secret. */
++export async function deriveFromSecret(secret) {
++  const base = await crypto.subtle.importKey('raw', secret, 'HKDF', false, ['deriveBits', 'deriveKey']);
++  const salt = enc.encode('office-attendance');
++  const lookup = hex(await crypto.subtle.deriveBits({ name: 'HKDF', hash: 'SHA-256', salt, info: enc.encode('passkey-lookup') }, base, 256));
++  const key = await crypto.subtle.deriveKey({ name: 'HKDF', hash: 'SHA-256', salt, info: enc.encode('passkey-key') },
++    base, { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']);
++  return { lookup, key };
++}
++
++export async function lockCode(key, code) {
++  const iv = random(12);
++  const ct = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, enc.encode(JSON.stringify({ code })));
++  return { v: 1, iv: b64(iv), ct: b64(ct) };
++}
++
++export async function unlockCode(key, box) {
++  const pt = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: unb64(box.iv) }, key, unb64(box.ct));
++  return normaliseCode(JSON.parse(new TextDecoder().decode(pt)).code);
++}
++
++/** The passkey's user id: the same for a code, so making another on the same phone replaces the old one. */
++async function userIdFor(code) {
++  const base = await crypto.subtle.importKey('raw', enc.encode(code.replace(/-/g, '')), 'HKDF', false, ['deriveBits']);
++  return new Uint8Array(await crypto.subtle.deriveBits({ name: 'HKDF', hash: 'SHA-256', salt: enc.encode('office-attendance'), info: enc.encode('passkey-user') }, base, 128));
++}
++
++/**
++ * Whether this browser can do passkeys at all, and doesn't say outright that it
++ * can't do the secret. A "yes" isn't a promise: adding a passkey proves it.
++ */
++export async function passkeysAvailable(win = globalThis) {
++  if (!win.PublicKeyCredential || !win.isSecureContext || !win.navigator?.credentials?.create) return false;
++  try {
++    const caps = await win.PublicKeyCredential.getClientCapabilities?.();
++    if (caps && caps['extension:prf'] === false) return false;
++  } catch { /* no capabilities API: find out by trying */ }
++  return true;
++}
++
++/** A failed passkey prompt, in words. */
++function explain(e, what) {
++  if (e?.name === 'NotAllowedError' || e?.name === 'AbortError') {
++    return what === 'add' ? 'No passkey was saved.' : 'No passkey was used: cancelled, or none on this device for Office Attendance. Use your recovery code instead.';
++  }
++  if (e?.name === 'InvalidStateError') return 'This device already has a passkey for your backup.';
++  if (e?.name === 'SecurityError') return 'Passkeys only work on the app\'s own address, over https.';
++  return e?.message || String(e);
++}
++
++/**
++ * Passkeys for one phone. `store` keeps the list in its meta (each entry has
++ * the credential id, lookup id and locked code - nothing that opens anything);
++ * `cloud` is cloud.js's engine, for the current code.
++ */
++export function createPasskeys({
++  store, cloud, onChange = () => {},
++  fetchImpl = (...a) => fetch(...a), base = '',
++  credentials = () => globalThis.navigator.credentials,
++  signal = (o) => globalThis.PublicKeyCredential?.signalUnknownCredential?.(o),
++  rpId = () => globalThis.location?.hostname,
++} = {}) {
++  const list = () => store.getMeta('passkeys') || [];
++  const save = (l) => { store.setMeta('passkeys', l); onChange(); };
++
++  /** Ask a passkey for its secret. `ids` limits which passkeys; none means any this site made. */
++  async function secretFrom(ids) {
++    const cred = await credentials().get({
++      publicKey: {
++        challenge: random(32),
++        userVerification: 'required',
++        timeout: 120000,
++        ...(ids ? { allowCredentials: ids.map((id) => ({ type: 'public-key', id: unb64url(id) })) } : {}),
++        extensions: { prf: { eval: { first: await prfSalt() } } },
++      },
++    });
++    const first = cred?.getClientExtensionResults?.().prf?.results?.first;
++    return { id: cred && b64url(cred.rawId), secret: first ? new Uint8Array(first) : null };
++  }
++
++  const keyUrl = (lookup) => `${base}/sync/key/${lookup}`;
++  const putBox = (lookup, box) => fetchImpl(keyUrl(lookup), { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify(box) });
++
++  /** Make a passkey that unlocks the current recovery code. Resolves to its entry; throws an Error in words. */
++  async function add() {
++    const code = cloud.status().code;
++    if (!code) throw new Error('Turn on cloud backup first.');
++    let cred;
++    try {
++      cred = await credentials().create({
++        publicKey: {
++          rp: { name: 'Office Attendance' },
++          user: { id: await userIdFor(code), name: 'Attendance backup', displayName: 'Office Attendance backup' },
++          challenge: random(32),
++          pubKeyCredParams: [{ type: 'public-key', alg: -7 }, { type: 'public-key', alg: -257 }],
++          authenticatorSelection: { residentKey: 'required', requireResidentKey: true, userVerification: 'required' },
++          excludeCredentials: list().map((p) => ({ type: 'public-key', id: unb64url(p.id) })),
++          attestation: 'none',
++          timeout: 120000,
++          extensions: { prf: { eval: { first: await prfSalt() } } },
++        },
++      });
++    } catch (e) { throw new Error(explain(e, 'add')); }
++    const id = b64url(cred.rawId);
++    const prf = cred.getClientExtensionResults?.().prf || {};
++    let secret = prf.results?.first ? new Uint8Array(prf.results.first) : null;
++    // Some phones only give the secret when the passkey is used, not when it's made.
++    if (!secret && prf.enabled !== false) {
++      try { secret = (await secretFrom([id])).secret; } catch (e) { await forgetCredential(id); throw new Error(explain(e, 'add')); }
++    }
++    if (!secret) {
++      await forgetCredential(id);
++      throw new Error("This device's passkeys can't unlock a backup. Keep your recovery code safe instead.");
++    }
++    const { lookup, key } = await deriveFromSecret(secret);
++    const box = await lockCode(key, code);
++    // Prove the round trip before saying it worked.
++    try {
++      const put = await putBox(lookup, box);
++      if (!put.ok) throw new Error((await put.json().catch(() => ({}))).error || `HTTP ${put.status}`);
++      const got = await fetchImpl(keyUrl(lookup));
++      if (!got.ok || (await unlockCode(key, await got.json())) !== code) throw new Error('the saved passkey backup didn\'t open');
++    } catch (e) {
++      await forgetCredential(id);
++      throw new Error(e instanceof TypeError ? "Couldn't reach the backup. Check your connection and try again." : `Couldn't save the passkey: ${e.message}`);
++    }
++    const entry = { id, lookup, box, added: Date.now() };
++    save([...list().filter((p) => p.id !== id), entry]);
++    store.setMeta('passkeysRenewed', Date.now());
++    return entry;
++  }
++
++  /**
++   * Use a passkey to get the recovery code back. Resolves to { code, entry };
++   * the caller restores with the code, then remember(entry).
++   */
++  async function recover() {
++    let got;
++    try { got = await secretFrom(null); } catch (e) { throw new Error(explain(e, 'use')); }
++    if (!got.secret) throw new Error("That passkey can't unlock a backup on this device. Use your recovery code instead.");
++    const { lookup, key } = await deriveFromSecret(got.secret);
++    let res;
++    try { res = await fetchImpl(keyUrl(lookup), { headers: { accept: 'application/json' } }); }
++    catch { throw new Error("Couldn't reach the backup. Check your connection and try again."); }
++    if (res.status === 404) throw new Error('That passkey has no backup any more (it was removed, or cloud backup was turned off). Use your recovery code instead.');
++    if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || `HTTP ${res.status}`);
++    const box = await res.json();
++    let code;
++    try { code = await unlockCode(key, box); } catch { code = null; }
++    if (!code) throw new Error("That passkey's backup couldn't be opened. Use your recovery code instead.");
++    return { code, entry: { id: got.id, lookup, box, added: Date.now() } };
++  }
++
++  /** Keep a passkey that was just used to restore, so Settings lists it. */
++  function remember(entry) {
++    save([...list().filter((p) => p.id !== entry.id), entry]);
++  }
++
++  /** Tell the passkey manager a passkey is no use any more, where the browser supports it. */
++  async function forgetCredential(id) {
++    try { await signal({ rpId: rpId(), credentialId: id }); } catch { /* not supported: it stays in the manager, harmlessly */ }
++  }
++
++  /** Remove one passkey: its locked code goes, and the passkey manager is told. */
++  async function remove(id) {
++    const p = list().find((x) => x.id === id);
++    if (p) { try { await fetchImpl(keyUrl(p.lookup), { method: 'DELETE' }); } catch { /* offline: it expires on its own */ } }
++    await forgetCredential(id);
++    save(list().filter((x) => x.id !== id));
++  }
++
++  /** Remove them all - when the code they unlock is turned off or replaced. */
++  async function removeAll() {
++    for (const p of list()) await remove(p.id);
++  }
++
++  /** Stop listing them here, leaving their locked codes - when this phone moves to another code. */
++  function forgetAll() { save([]); }
++
++  /** Re-save each locked code now and then, so a passkey that's kept doesn't expire with it. */
++  async function renew() {
++    const last = store.getMeta('passkeysRenewed') || 0;
++    if (!list().length || Date.now() - last < RENEW_MS) return;
++    try {
++      for (const p of list()) await putBox(p.lookup, p.box);
++      store.setMeta('passkeysRenewed', Date.now());
++    } catch { /* offline: next time */ }
++  }
++
++  return { list, add, recover, remember, remove, removeAll, forgetAll, renew };
++}
+diff --git a/public/styles.css b/public/styles.css
+index 01280e8..a173f0d 100644
+--- a/public/styles.css
++++ b/public/styles.css
+@@ -589,6 +589,8 @@ button.dayline:focus-visible { outline: 2px solid var(--accent); outline-offset:
+ .set-item.danger .set-item-t > span { color: var(--critical); }
+ .set-backup { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+ .set-backup .ghost { min-height: 44px; display: grid; place-items: center; text-align: center; }
++/* cloud backup's buttons: two across, so four (with passkeys) make a tidy square */
++#cloudActions { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+ .ghost.icon-sm { width: 34px; height: 32px; padding: 0; display: grid; place-items: center; }
+ 
+ /* ---------- selecting a range by touch (Month tab) ---------- */
+@@ -688,3 +690,18 @@ td.stat.est { font-style: italic; }
+ .field-label { font-size: 12px; font-weight: 600; color: var(--text-2); }
+ .linkish { justify-self: start; border: 0; background: none; padding: 0; color: var(--accent); font-size: 13px; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
+ .linkish[hidden] { display: none; }
++.passkeys { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
++.passkeys[hidden] { display: none; }
++.passkeys li { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 8px 12px; border: 1px solid var(--border); border-radius: 10px; font-size: 13px; color: var(--text-2); }
++.passkeys li b { color: var(--text-1); font-weight: 600; }
++.passkeys li button { flex: none; min-height: 32px; padding: 0 12px; font-size: 13px; }
++.passkey-offer { display: grid; gap: 8px; margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--border); }
++.passkey-offer[hidden], .passkey-use[hidden] { display: none; }
++.passkey-offer p { margin: 0; font-size: 13px; line-height: 1.45; color: var(--text-2); }
++.passkey-offer button { justify-self: start; }
++.passkey-offer .dlg-err:empty { display: none; }
++.passkey-offer .dlg-err.ok { color: var(--good-text); }
++.passkey-use { display: grid; gap: 10px; margin-bottom: 4px; }
++.passkey-use button { width: 100%; min-height: 46px; }
++.or { display: flex; align-items: center; gap: 10px; margin: 0; font-size: 12px; color: var(--text-2); }
++.or::before, .or::after { content: ""; flex: 1; border-top: 1px solid var(--border); }
+diff --git a/test/passkey.test.js b/test/passkey.test.js
+new file mode 100644
+index 0000000..fb608ff
+--- /dev/null
++++ b/test/passkey.test.js
+@@ -0,0 +1,213 @@
++import { test } from 'node:test';
++import assert from 'node:assert/strict';
++import { createHmac, randomBytes } from 'node:crypto';
++import { handleSync } from '../worker/index.js';
++import { newCode, createCloud } from '../public/local/cloud.js';
++import { createPasskeys, deriveFromSecret, lockCode, unlockCode, passkeysAvailable } from '../public/local/passkey.js';
++
++/** Workers KV, in memory. */
++function memoryKV() {
++  const m = new Map();
++  return {
++    raw: m,
++    async get(k) { return m.get(k)?.value ?? null; },
++    async getWithMetadata(k) { const e = m.get(k); return e ? { value: e.value, metadata: e.metadata } : { value: null, metadata: null }; },
++    async put(k, value, opts = {}) { m.set(k, { value, metadata: opts.metadata, ttl: opts.expirationTtl }); },
++    async delete(k) { m.delete(k); },
++  };
++}
++
++function site() {
++  const env = { BACKUPS: memoryKV() };
++  const net = { down: false };
++  const fetchImpl = async (url, init = {}) => {
++    if (net.down) throw new TypeError('Failed to fetch');
++    return handleSync(new Request(new URL(url, 'https://site.example'), init), env);
++  };
++  return { env, net, fetchImpl };
++}
++
++/**
++ * A passkey manager (iCloud Keychain, say), shared by the phones signed in to
++ * it. PRF is HMAC with a per-passkey secret, like the real thing.
++ * `prf`: 'create' (secret at create and get), 'get' (only at get), 'none'.
++ */
++function keychain({ prf = 'create' } = {}) {
++  const creds = [];
++  const signalled = [];
++  const out = (c, salt) => ({
++    rawId: c.rawId,
++    getClientExtensionResults: () => (prf === 'none' ? { prf: { enabled: false } }
++      : { prf: { enabled: true, ...(salt ? { results: { first: new Uint8Array(createHmac('sha256', c.secret).update(Buffer.from(salt)).digest()).buffer } } : {}) } }),
++  });
++  const api = {
++    creds, signalled, cancel: false,
++    async create({ publicKey }) {
++      if (api.cancel) throw Object.assign(new Error('cancelled'), { name: 'NotAllowedError' });
++      const userId = Buffer.from(publicKey.user.id).toString('hex');
++      for (const ex of publicKey.excludeCredentials || []) {
++        if (creds.some((c) => Buffer.from(c.rawId).equals(Buffer.from(ex.id)))) throw Object.assign(new Error('exists'), { name: 'InvalidStateError' });
++      }
++      // a passkey for the same user replaces the old one
++      const i = creds.findIndex((c) => c.userId === userId);
++      if (i >= 0) creds.splice(i, 1);
++      const c = { rawId: new Uint8Array(randomBytes(16)).buffer, secret: randomBytes(32), userId };
++      creds.push(c);
++      return out(c, prf === 'create' ? publicKey.extensions.prf.eval.first : null);
++    },
++    async get({ publicKey }) {
++      if (api.cancel) throw Object.assign(new Error('cancelled'), { name: 'NotAllowedError' });
++      const allowed = publicKey.allowCredentials
++        ? creds.filter((c) => publicKey.allowCredentials.some((a) => Buffer.from(a.id).equals(Buffer.from(c.rawId))))
++        : creds;
++      const c = allowed.at(-1);
++      if (!c) throw Object.assign(new Error('none'), { name: 'NotAllowedError' });
++      return out(c, publicKey.extensions.prf.eval.first);
++    },
++  };
++  api.signal = async (o) => { signalled.push(o.credentialId); };
++  return api;
++}
++
++function phone(s, kc, data = { days: { '2026-10-14': { code: 'O' } } }) {
++  const meta = new Map();
++  const store = { getMeta: (k) => meta.get(k), setMeta: (k, v) => meta.set(k, v) };
++  const ph = { meta, data };
++  ph.cloud = createCloud({ store, snapshot: async () => ph.data, fetchImpl: s.fetchImpl });
++  ph.passkeys = createPasskeys({ store, cloud: ph.cloud, fetchImpl: s.fetchImpl, credentials: () => kc, signal: kc.signal, rpId: () => 'site.example' });
++  return ph;
++}
++
++test('a passkey secret locks and unlocks the code; a different passkey can\'t', async () => {
++  const a = await deriveFromSecret(randomBytes(32));
++  const b = await deriveFromSecret(randomBytes(32));
++  assert.match(a.lookup, /^[0-9a-f]{64}$/);
++  assert.notEqual(a.lookup, b.lookup);
++  const box = await lockCode(a.key, 'K7QM-2XRP-9TVD-4HNA');
++  assert.ok(!JSON.stringify(box).includes('K7QM'));
++  assert.equal(await unlockCode(a.key, box), 'K7QM-2XRP-9TVD-4HNA');
++  await assert.rejects(unlockCode(b.key, box));
++});
++
++test('add a passkey, then a new phone on the same keychain restores with it alone', async () => {
++  const s = site();
++  const kc = keychain();
++  const a = phone(s, kc);
++  const code = newCode();
++  a.cloud.adopt(code);
++  await a.cloud.flush();
++  const entry = await a.passkeys.add();
++  assert.equal(a.passkeys.list().length, 1);
++  const stored = s.env.BACKUPS.raw.get(`k:${entry.lookup}`);
++  assert.ok(stored && !stored.value.includes(code.slice(0, 4)), 'the server holds the code locked');
++  assert.ok(stored.ttl > 365 * 24 * 3600);
++
++  const b = phone(s, kc, null);
++  const { code: got, entry: used } = await b.passkeys.recover();
++  assert.equal(got, code);
++  const backup = await b.cloud.fetchBackup(got);
++  assert.deepEqual(backup.data, a.data);
++  b.passkeys.remember(used);
++  assert.equal(b.passkeys.list()[0].id, entry.id, 'the new phone lists the passkey it used');
++});
++
++test('phones that only give the secret when a passkey is used still work', async () => {
++  const s = site();
++  const kc = keychain({ prf: 'get' });
++  const a = phone(s, kc);
++  const code = newCode();
++  a.cloud.adopt(code);
++  await a.passkeys.add();
++  assert.equal((await phone(s, kc).passkeys.recover()).code, code);
++});
++
++test("passkeys that can't give a secret: refused, and the useless passkey is withdrawn", async () => {
++  const s = site();
++  const kc = keychain({ prf: 'none' });
++  const a = phone(s, kc);
++  a.cloud.adopt(newCode());
++  await assert.rejects(a.passkeys.add(), /can't unlock a backup/);
++  assert.equal(a.passkeys.list().length, 0);
++  assert.equal(kc.signalled.length, 1, 'the passkey manager is told to drop it');
++  assert.equal([...s.env.BACKUPS.raw.keys()].filter((k) => k.startsWith('k:')).length, 0);
++});
++
++test('cancelled, offline, already there, no cloud backup: each says so plainly', async () => {
++  const s = site();
++  const kc = keychain();
++  const a = phone(s, kc);
++  await assert.rejects(a.passkeys.add(), /Turn on cloud backup first/);
++  a.cloud.adopt(newCode());
++  kc.cancel = true;
++  await assert.rejects(a.passkeys.add(), /No passkey was saved/);
++  await assert.rejects(phone(s, kc).passkeys.recover(), /No passkey was used/);
++  kc.cancel = false;
++  s.net.down = true;
++  await assert.rejects(a.passkeys.add(), /Couldn't reach the backup/);
++  assert.equal(a.passkeys.list().length, 0);
++  s.net.down = false;
++  await a.passkeys.add();
++  await assert.rejects(a.passkeys.add(), /already has a passkey/);
++  await assert.rejects(phone(s, keychain()).passkeys.recover(), /No passkey was used/, 'a keychain with no passkey for the site');
++});
++
++test('removing a passkey, or turning backup off, stops it restoring; the code still does', async () => {
++  const s = site();
++  const kc = keychain();
++  const a = phone(s, kc);
++  const code = newCode();
++  a.cloud.adopt(code);
++  await a.cloud.flush();
++  const p = await a.passkeys.add();
++  await a.passkeys.remove(p.id);
++  assert.equal(a.passkeys.list().length, 0);
++  assert.ok(kc.signalled.includes(p.id));
++  await assert.rejects(phone(s, kc).passkeys.recover(), /has no backup any more/);
++  assert.equal((await phone(s, kc).cloud.fetchBackup(code)).code, code);
++
++  await a.passkeys.add();
++  await a.passkeys.removeAll();
++  await a.cloud.turnOff();
++  assert.equal(s.env.BACKUPS.raw.size, 0, 'nothing left in the cloud');
++});
++
++test('locked codes are re-saved monthly, so a kept passkey never expires', async () => {
++  const s = site();
++  const kc = keychain();
++  const a = phone(s, kc);
++  a.cloud.adopt(newCode());
++  const p = await a.passkeys.add();
++  s.env.BACKUPS.raw.delete(`k:${p.lookup}`);          // as if it had expired
++  await a.passkeys.renew();
++  assert.ok(!s.env.BACKUPS.raw.has(`k:${p.lookup}`), 'not yet: renewed this month');
++  a.meta.set('passkeysRenewed', Date.now() - 31 * 86400000);
++  await a.passkeys.renew();
++  assert.ok(s.env.BACKUPS.raw.has(`k:${p.lookup}`));
++  assert.equal((await phone(s, kc).passkeys.recover()).code, a.cloud.status().code);
++});
++
++test('the Worker keeps locked codes small, well-formed, and same-site only', async () => {
++  const s = site();
++  const id = 'a'.repeat(64);
++  const put = (body, headers = { 'content-type': 'application/json' }) => s.fetchImpl(`/sync/key/${id}`, { method: 'PUT', headers, body });
++  assert.equal((await s.fetchImpl(`/sync/key/${id}`)).status, 404);
++  assert.equal((await put('{"v":1,"iv":"a","ct":"b"}')).status, 200);
++  assert.equal((await s.fetchImpl(`/sync/key/${id}`)).status, 200);
++  assert.equal((await put(JSON.stringify({ v: 1, iv: 'a', ct: 'x'.repeat(5000) }))).status, 413);
++  assert.equal((await put('{"v":2}')).status, 400);
++  assert.equal((await put('x', { 'content-type': 'text/plain' })).status, 415);
++  assert.equal((await s.fetchImpl(`/sync/key/${id}`, { headers: { 'sec-fetch-site': 'cross-site' } })).status, 403);
++  assert.equal((await s.fetchImpl('/sync/key/nothex')).status, 404);
++  assert.equal((await s.fetchImpl(`/sync/key/${id}`, { method: 'POST' })).status, 405);
++  assert.equal((await s.fetchImpl(`/sync/key/${id}`, { method: 'DELETE' })).status, 200);
++  assert.equal((await s.fetchImpl(`/sync/key/${id}`)).status, 404);
++});
++
++test('passkeys are offered only where the browser can do them', async () => {
++  assert.equal(await passkeysAvailable({}), false);
++  const base = { isSecureContext: true, navigator: { credentials: { create() {} } } };
++  assert.equal(await passkeysAvailable({ ...base, PublicKeyCredential: {} }), true, 'no capability list: try it');
++  assert.equal(await passkeysAvailable({ ...base, PublicKeyCredential: { getClientCapabilities: async () => ({ 'extension:prf': false }) } }), false);
++  assert.equal(await passkeysAvailable({ ...base, PublicKeyCredential: { getClientCapabilities: async () => ({ 'extension:prf': true }) } }), true);
++  assert.equal(await passkeysAvailable({ ...base, isSecureContext: false, PublicKeyCredential: {} }), false);
++});
+diff --git a/worker/index.js b/worker/index.js
+index 977982e..dba36de 100644
+--- a/worker/index.js
++++ b/worker/index.js
+@@ -18,11 +18,19 @@
+  *                       a mismatch is 409, with the current revision.
+  *                       If-Match: * replaces whatever is there.
+  *   DELETE /sync/<id>   remove it (turning cloud backup off)
++ *
++ * And for passkeys (public/local/passkey.js), a recovery code locked with a
++ * key only that passkey can produce, under an id derived from the same secret:
++ *
++ *   GET    /sync/key/<id>   the locked code, or 404
++ *   PUT    /sync/key/<id>   store it (a few hundred bytes; replaces any)
++ *   DELETE /sync/key/<id>   remove it
+  */
+ 
+ const ID = /^[0-9a-f]{64}$/;
+ const MAX_BYTES = 1024 * 1024;                 // a backup is ~30 KB a year; this is decades
+ const KEEP_SECONDS = 3 * 365 * 24 * 3600;      // unused for three years: let it go (each backup renews it)
++const MAX_KEY_BYTES = 4096;                    // a locked recovery code is ~150 bytes
+ 
+ const HEADERS = {
+   'content-type': 'application/json; charset=utf-8',
+@@ -32,15 +40,51 @@ const HEADERS = {
+ };
+ const reply = (status, body, extra = {}) => new Response(JSON.stringify(body), { status, headers: { ...HEADERS, ...extra } });
+ 
++/** A JSON body shaped like {v:1, iv, ct}, or a Response saying what's wrong. */
++async function readBox(request, maxBytes) {
++  if ((request.headers.get('content-type') || '').split(';')[0].trim() !== 'application/json') {
++    return reply(415, { error: 'send JSON' });
++  }
++  const body = await request.text();
++  if (body.length > maxBytes) return reply(413, { error: 'too large' });
++  let parsed;
++  try { parsed = JSON.parse(body); } catch { return reply(400, { error: 'not JSON' }); }
++  if (!parsed || parsed.v !== 1 || typeof parsed.iv !== 'string' || typeof parsed.ct !== 'string') {
++    return reply(400, { error: 'not an encrypted backup' });
++  }
++  return body;
++}
++
++/** /sync/key/<id>: a passkey's locked recovery code. No revisions: only that passkey can work out the id. */
++async function handleKey(request, env, id) {
++  const key = `k:${id}`;
++  if (request.method === 'GET') {
++    const value = await env.BACKUPS.get(key);
++    return value == null ? reply(404, { error: 'no passkey backup here' }) : new Response(value, { status: 200, headers: HEADERS });
++  }
++  if (request.method === 'PUT') {
++    const body = await readBox(request, MAX_KEY_BYTES);
++    if (body instanceof Response) return body;
++    await env.BACKUPS.put(key, body, { expirationTtl: KEEP_SECONDS });
++    return reply(200, { saved: true });
++  }
++  if (request.method === 'DELETE') {
++    await env.BACKUPS.delete(key);
++    return reply(200, { deleted: true });
++  }
++  return reply(405, { error: 'use GET, PUT or DELETE' }, { allow: 'GET, PUT, DELETE' });
++}
++
+ export async function handleSync(request, env) {
+   const url = new URL(request.url);
+-  const m = url.pathname.match(/^\/sync\/([^/]+)$/);
+-  if (!m || !ID.test(m[1])) return reply(404, { error: 'not found' });
++  const m = url.pathname.match(/^\/sync\/(?:(key)\/)?([^/]+)$/);
++  if (!m || !ID.test(m[2])) return reply(404, { error: 'not found' });
+   if (!env.BACKUPS) return reply(503, { error: 'cloud backup is not set up on this site' });
+   // Only this site's own pages: a browser marks requests from other sites.
+   if (request.headers.get('sec-fetch-site') === 'cross-site') return reply(403, { error: 'cross-site request refused' });
++  if (m[1]) return handleKey(request, env, m[2]);
+ 
+-  const key = `b:${m[1]}`;
++  const key = `b:${m[2]}`;
+   if (request.method === 'GET') {
+     const { value, metadata } = await env.BACKUPS.getWithMetadata(key);
+     if (value == null) return reply(404, { error: 'no backup for this code' });
+@@ -48,16 +92,8 @@ export async function handleSync(request, env) {
+   }
+ 
+   if (request.method === 'PUT') {
+-    if ((request.headers.get('content-type') || '').split(';')[0].trim() !== 'application/json') {
+-      return reply(415, { error: 'send JSON' });
+-    }
+-    const body = await request.text();
+-    if (body.length > MAX_BYTES) return reply(413, { error: 'backup too large' });
+-    let parsed;
+-    try { parsed = JSON.parse(body); } catch { return reply(400, { error: 'not JSON' }); }
+-    if (!parsed || parsed.v !== 1 || typeof parsed.iv !== 'string' || typeof parsed.ct !== 'string') {
+-      return reply(400, { error: 'not an encrypted backup' });
+-    }
++    const body = await readBox(request, MAX_BYTES);
++    if (body instanceof Response) return body;
+     const expect = (request.headers.get('if-match') || '').replace(/"/g, '').trim();
+     if (!expect) return reply(428, { error: 'If-Match is required' });
+     const current = await env.BACKUPS.getWithMetadata(key);
