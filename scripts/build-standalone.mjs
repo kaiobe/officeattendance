@@ -83,7 +83,10 @@ writeFileSync(manifestPath, JSON.stringify(manifest, null, 2) + '\n');
 
 // Each worker serves one complete build. Updates wait until older tabs close,
 // so a page cannot mix JavaScript from different releases.
-const files = ['./', ...walk(OUT).map(rel).filter((f) => f !== 'index.html')];
+// build.json says which release is newest. It's never cached, so a phone can
+// tell when the release it's running is out of date (public/local/update.js).
+writeFileSync(join(OUT, 'build.json'), JSON.stringify({ version: VERSION, build: BUILD }));
+const files = ['./', ...walk(OUT).map(rel).filter((f) => f !== 'index.html' && f !== 'build.json')];
 const worker = readFileSync(join(ROOT, 'scripts/service-worker.template.js'), 'utf8')
   .replace('__BUILD_ID__', JSON.stringify(`${VERSION}-${BUILD}`))
   .replace('__FILES__', JSON.stringify(files));
@@ -103,6 +106,8 @@ writeFileSync(join(OUT, '_headers'), `/*
   Cache-Control: no-cache
 /sw.js
   Cache-Control: no-cache
+/build.json
+  Cache-Control: no-store
 `);
 
 console.log(`Standalone v${VERSION} built into ${relative(ROOT, OUT) || '.'}/ - ${files.length} files`);

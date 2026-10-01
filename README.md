@@ -128,6 +128,11 @@ choose a new empty output folder (`node scripts/build-standalone.mjs dist-new`).
   with no signal. A complete update downloads while online and takes over after all
   open app tabs/windows close. Reopen the app to use it. This keeps each page on one
   consistent release; other apps' caches are left alone.
+- **Updates:** the app checks `build.json` (never cached) when it opens and when it comes
+  back to the front. If a newer release is out, the version badge turns yellow; tapping
+  it, or **Settings › Check for updates**, drops the offline copy and reloads from the
+  site (`public/local/update.js`). Attendance in browser storage isn't touched, and
+  nothing is dropped without a connection.
 
 ### Keeping their data safe
 
@@ -523,7 +528,8 @@ public/
     validate.js   every value from outside is checked here before it's stored
     codes.js, csv.js, settings.js, errors.js
   local/        the standalone version: localStorage store, first run, backups, offline,
-                cloud.js + passkey.js + cloud-ui.js (encrypted cloud backup, passkeys)
+                cloud.js + passkey.js + cloud-ui.js (encrypted cloud backup, passkeys),
+                update.js (getting a newer release past the offline copy)
   manifest.webmanifest, icons/   what makes it installable on a phone
   lib/dates.js  calendar helpers shared by everything - one copy, no build
 worker/index.js the Cloudflare Worker: stores the standalone version's encrypted backups in KV

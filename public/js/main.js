@@ -14,7 +14,10 @@ import { addDays, datesBetween, fyOfDate, weekdayOf } from '../lib/dates.js';
 let APP_VERSION = '';
 
 const builtAt = () => builtAtOf(S.build);
-const isStale = () => !!(S.version && S.version !== APP_VERSION);
+// The newest release: the server's (S.version), or for the standalone version
+// what build.json says (runtime.latest, from public/local/update.js).
+const newest = () => runtime.latest?.version || S.version;
+const isStale = () => !!(newest() && newest() !== APP_VERSION);
 
 /**
  * The release badge. The page carries the version it was built from; if the
@@ -26,15 +29,19 @@ function renderVersion() {
   const el = $('version');
   const stale = isStale();
   el.classList.toggle('stale', stale);
-  el.textContent = stale ? `v${APP_VERSION} → v${S.version}` : `v${APP_VERSION}`;
+  el.textContent = stale ? `v${APP_VERSION} → v${newest()}` : `v${APP_VERSION}`;
   el.title = stale
-    ? `This page is running v${APP_VERSION}, but the server is serving v${S.version}.\nClick to reload.`
+    ? (runtime.local
+      ? `This page is running v${APP_VERSION}, but v${newest()} is out.\nClick to update.`
+      : `This page is running v${APP_VERSION}, but the server is serving v${newest()}.\nClick to reload.`)
     : `Release v${APP_VERSION}\nDeployed ${builtAt()}`;
   el.setAttribute('role', stale ? 'button' : 'presentation');
   el.tabIndex = stale ? 0 : -1;
 }
 
 function hardReload() {
+  // The standalone version has its own way past the offline cache.
+  if (runtime.update) { runtime.update(); return; }
   const u = new URL(location.href);
   u.searchParams.set('v', Date.now());
   location.replace(u.toString());
@@ -161,7 +168,9 @@ function renderThemeButton() {
 function renderMenu() {
   $('menuTheme').textContent = `Theme: ${THEME_LABEL[getTheme()]}`;
   $('menuVersion').textContent = isStale()
-    ? `This page is v${APP_VERSION}; the server has v${S.version}. Tap the badge to reload.`
+    ? (runtime.local
+      ? `This page is v${APP_VERSION}; v${newest()} is out. Tap the badge to update.`
+      : `This page is v${APP_VERSION}; the server has v${newest()}. Tap the badge to reload.`)
     : `Version ${APP_VERSION} · deployed ${builtAt()}`;
 }
 
@@ -214,6 +223,7 @@ export async function boot(appVersion) {
   $('fysel').onchange = (e) => { S.sel = null; attempt(() => loadState(Number(e.target.value))); };
 
   $('version').onclick = () => { if (isStale()) hardReload(); };
+  runtime.refreshVersion = renderVersion;
   $('version').onkeydown = (e) => {
     if ((e.key === 'Enter' || e.key === ' ') && isStale()) { e.preventDefault(); hardReload(); }
   };

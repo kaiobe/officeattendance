@@ -10,6 +10,23 @@ Versions are `MAJOR.MINOR.PATCH`:
 `npm run bump [major|minor|patch]` moves the number in every place it appears
 and opens an entry here. Nothing else should edit a version by hand.
 
+## 1.17.1 - 2026-10-01
+
+- **Phone version:** a phone set up on 1.8.0 and still on that release's standard day
+  (7.6 h, 09:00 to 17:00) moves to the current one, 8.75 h, 09:00 to 17:45, once, and
+  says so. Anyone who changed any of those keeps their own. New phones already start on
+  8.75 h.
+
+## 1.17.0 - 2026-10-01
+
+- **Updates on the phone version.** A home-screen app is rarely fully closed, so the
+  offline copy could keep running an old release. Now:
+  - The app checks for a newer release when it opens and when you come back to it. When
+    there is one, the version badge turns yellow (*v1.16.0 → v1.17.0*); tap it to update.
+  - **Settings › Check for updates** does the same on demand, or says you're up to date.
+  - Updating drops the offline copy and loads the new release from the site. Your
+    attendance isn't touched, and with no connection nothing is dropped.
+
 ## 1.16.0 - 2026-10-01
 
 - **Phone Year tab:** the columns are now **Days %**, **Days +/-**, **Hours %** and

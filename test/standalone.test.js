@@ -151,7 +151,13 @@ test('the build: a static site that starts in the browser, works offline and sen
       assert.ok(sw.includes(`"${f}"`), `sw.js caches ${f}`);
     }
     assert.match(sw, /startsWith\(new URL\('sync\/', scope\)\.pathname\)\) return;/, 'cloud backups are never served from the cache');
+    assert.match(sw, /=== new URL\('build\.json', scope\)\.pathname\) return;/, 'which release is newest always comes from the network');
+    assert.ok(!sw.includes('"build.json"'), 'build.json is not in the offline copy');
+    const bj = JSON.parse(readFileSync(join(out, 'build.json'), 'utf8'));
+    assert.equal(bj.version, JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8')).version);
+    assert.match(String(bj.build), /^\d{13}$/);
     const headers = readFileSync(join(out, '_headers'), 'utf8');
+    assert.match(headers, /\/build\.json\n\s+Cache-Control: no-store/);
     assert.match(headers, /Content-Security-Policy: default-src 'self'/);
     assert.match(headers, /\/sw\.js\n\s+Cache-Control: no-cache/);
     assert.ok(!existsSync(join(out, 'seed-fy27.json')), 'no one else gets your data');

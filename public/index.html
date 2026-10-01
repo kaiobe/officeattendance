@@ -249,7 +249,10 @@
 
     <p class="dlg-err" id="settingsErr" role="alert"></p>
     <p class="note">Work days for the requirement = Office + Home; working sick is counted in the key totals under the grid, not in the percentage. Office hours count only on Office days. <span id="dataWhere">Data lives in <code>/data/attendance.db</code> on the container's volume.</span></p>
-    <p class="note" id="settingsVersion"></p>
+    <div class="set-version">
+      <p class="note" id="settingsVersion"></p>
+      <button class="ghost" id="checkUpdate" hidden>Check for updates</button>
+    </div>
   </div>
 </dialog>
 

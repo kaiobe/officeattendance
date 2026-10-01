@@ -10,8 +10,9 @@
 import { localStore } from './store.js';
 import { createService, Download } from '../core/service.js';
 import { STATES } from '../core/holidays.js';
-import { NEW_PHONE_SETTINGS } from './defaults.js';
+import { NEW_PHONE_SETTINGS, FIRST_PHONE_SETTINGS } from './defaults.js';
 import { setupCloud } from './cloud-ui.js';
+import { createUpdater } from './update.js';
 import { runtime } from '../js/state.js';
 import { $, plural } from '../js/format.js';
 import { flash, attempt } from '../js/dialogs.js';
@@ -95,8 +96,34 @@ export function installLocal() {
     }
   };
 
+  // Newer releases: noticed on their own (the version badge turns yellow), or
+  // Settings › Check for updates (update.js).
+  const updater = createUpdater({
+    build: BUILD,
+    version: () => runtime.appVersion,
+    onNews: (latest) => { runtime.latest = latest; runtime.refreshVersion?.(); },
+  });
+  runtime.update = async () => {
+    const btn = $('checkUpdate');
+    btn.disabled = true;
+    btn.textContent = 'Checking…';
+    try {
+      const r = await updater.checkAndApply({ force: true });
+      if (r.state === 'offline') flash("Couldn't check for updates: no connection.", true);
+      else if (r.state === 'current' && r.latest.build === BUILD) flash(`You have the latest version (v${runtime.appVersion})`);
+      else flash(`Updating to v${r.latest.version}…`);
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Check for updates';
+    }
+  };
+  $('checkUpdate').hidden = false;
+  $('checkUpdate').onclick = () => runtime.update();
+
+  let movedDefaults = false;
   runtime.beforeLoad = async () => {
     if (!store.getMeta('setupDone')) await welcome(store, saveMeta, cloudUi);
+    else movedDefaults = await moveOffFirstDefaults(store, saveMeta);
   };
 
   runtime.afterLoad = () => {
@@ -104,6 +131,10 @@ export function installLocal() {
     attempt(() => cloudUi.start());
     attempt(() => nudge(store, saveMeta, cloudUi.cloud));
     registerServiceWorker();
+    updater.watch();
+    const from = updater.updatedFrom();
+    if (from && from !== runtime.appVersion) flash(`Updated to v${runtime.appVersion}`);
+    if (movedDefaults) flash(`Standard day is now ${NEW_PHONE.stdDayHours} h, ${NEW_PHONE.defaultIn} to ${NEW_PHONE.defaultOut}. Change it in Settings if that's not right.`);
   };
 
   // Beside cloud backup, the file buttons say they're files, so "Restore…" means the code.
@@ -208,6 +239,24 @@ function welcome(store, saveMeta, cloudUi) {
 
     dlg.showModal();
   });
+}
+
+/**
+ * A phone set up on 1.8.0 that kept its starting standard day (7.6 h, 09:00 to
+ * 17:00) moves to the current one (8.75 h, 09:00 to 17:45), once. Anyone who
+ * changed any of the three keeps what they chose. Resolves true if it moved.
+ */
+async function moveOffFirstDefaults(store, saveMeta) {
+  if (store.getMeta('firstDefaultsChecked')) return false;
+  const s = store.getSettings();
+  const untouched = Object.entries(FIRST_PHONE_SETTINGS).every(([k, v]) => s[k] === v);
+  if (untouched) {
+    await runtime.transport('PUT', '/api/settings', {
+      stdDayHours: NEW_PHONE.stdDayHours, defaultIn: NEW_PHONE.defaultIn, defaultOut: NEW_PHONE.defaultOut,
+    });
+  }
+  await saveMeta({ firstDefaultsChecked: Date.now() });
+  return untouched;
 }
 
 /* ---------- keeping the data ---------- */

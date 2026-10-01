@@ -16,3 +16,6 @@ dist/
 
 # wrangler dev's local state
 .wrangler/
+
+# patches Claude delivers changes in; the changes themselves are in the code
+Claude outputs/*.patch

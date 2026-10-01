@@ -22,6 +22,8 @@ self.addEventListener('fetch', (event) => {
   if (req.method !== 'GET' || url.origin !== scope.origin || !url.pathname.startsWith(scope.pathname)) return;
   // Cloud backups always come from the network: a cached copy must never be restored.
   if (url.pathname.startsWith(new URL('sync/', scope).pathname)) return;
+  // Which release is newest: always asked of the network (public/local/update.js).
+  if (url.pathname === new URL('build.json', scope).pathname) return;
   event.respondWith((async () => {
     const cache = await caches.open(CACHE);
     const key = req.mode === 'navigate' ? new URL('./', scope).href : req;
