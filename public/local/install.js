@@ -13,7 +13,7 @@ import { STATES } from '../core/holidays.js';
 import { NEW_PHONE_SETTINGS } from './defaults.js';
 import { runtime } from '../js/state.js';
 import { $, plural } from '../js/format.js';
-import { flash } from '../js/dialogs.js';
+import { flash, attempt } from '../js/dialogs.js';
 import { pad } from '../lib/dates.js';
 
 /** Stamped by scripts/build-standalone.mjs with the time of the build. */
@@ -45,6 +45,14 @@ const NEW_PHONE = Object.freeze({ ...NEW_PHONE_SETTINGS, holidayState: guessStat
 
 export function installLocal() {
   const store = localStore({ defaults: NEW_PHONE });
+  // Every writer, including backup/setup bookkeeping, uses the same tab lock.
+  const access = async (fn) => {
+    const run = () => store.transaction(fn);
+    return navigator.locks ? navigator.locks.request('office-attendance', run) : run();
+  };
+  const saveMeta = (patch) => access(() => {
+    for (const [key, value] of Object.entries(patch)) store.setMeta(key, value);
+  });
   const service = createService({
     store,
     today: localToday,
@@ -61,29 +69,35 @@ export function installLocal() {
     const url = new URL(path, 'http://local');
     const route = service.route(method, url.pathname);
     if (!route) throw new Error(`no such endpoint: ${method} ${url.pathname}`);
-    const out = route({ query: url.searchParams, body: body ?? {} });
+    const out = await access(() => {
+      const out = route({ query: url.searchParams, body: body ?? {} });
+      if (method !== 'GET') store.setMeta('lastChange', Date.now());
+      return out;
+    });
     if (out instanceof Download) return out;
-    if (method !== 'GET') store.setMeta('lastChange', Date.now());
     return JSON.parse(JSON.stringify(out));
   };
+
+  runtime.saveRecovery = () => saveOrShare(new Download('application/json',
+    `attendance-recovery-${localToday()}.json`, store.raw() || '{}'));
 
   runtime.saveFile = async (path) => {
     const file = await runtime.transport('GET', path, {});
     const saved = await saveOrShare(file);
     if (saved && path.startsWith('/api/export.json')) {
-      store.setMeta('lastBackup', Date.now());
+      await saveMeta({ lastBackup: Date.now() });
       $('backupNudge').hidden = true;
       flash('Backup saved');
     }
   };
 
   runtime.beforeLoad = async () => {
-    if (!store.getMeta('setupDone')) await welcome(store);
+    if (!store.getMeta('setupDone')) await welcome(store, saveMeta);
   };
 
   runtime.afterLoad = () => {
-    keepData(store);
-    nudge(store);
+    attempt(() => keepData(saveMeta));
+    attempt(() => nudge(store, saveMeta));
     registerServiceWorker();
   };
 
@@ -120,7 +134,7 @@ async function saveOrShare({ type, filename, body }) {
 
 /* ---------- first run ---------- */
 
-function welcome(store) {
+function welcome(store, saveMeta) {
   const dlg = $('welcomeDlg');
   const s = store.getSettings();
   $('wState').innerHTML = Object.entries(STATES).map(([k, name]) => `<option value="${k}">${name}</option>`).join('');
@@ -133,9 +147,8 @@ function welcome(store) {
   $('installTip').hidden = matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
 
   return new Promise((resolve) => {
-    const done = () => {
-      store.setMeta('setupDone', new Date().toISOString());
-      store.setMeta('firstUse', Date.now());
+    const done = async () => {
+      await saveMeta({ setupDone: new Date().toISOString(), firstUse: Date.now() });
       dlg.close();
       resolve();
     };
@@ -153,7 +166,7 @@ function welcome(store) {
           defaultIn: $('wIn').value || NEW_PHONE.defaultIn,
           defaultOut: $('wOut').value || NEW_PHONE.defaultOut,
         });
-        done();
+        await done();
       } catch (e) {
         $('welcomeErr').textContent = e.message;
       }
@@ -172,8 +185,8 @@ function welcome(store) {
         const backup = JSON.parse(await f.text());
         if (!backup || typeof backup.days !== 'object') throw new Error("that file isn't a backup from this app");
         const r = await runtime.transport('POST', '/api/import', { days: backup.days, settings: backup.settings });
-        store.setMeta('lastBackup', Date.now());
-        done();
+        await saveMeta({ lastBackup: Date.now() });
+        await done();
         flash(`Restored ${r.imported} ${plural(r.imported, 'day')}`);
       } catch (err) {
         $('welcomeErr').textContent = `Couldn't restore: ${err.message}`;
@@ -193,7 +206,7 @@ function welcome(store) {
  * Asking for persistent storage opts out where the browser allows it. The
  * outcome is shown in Settings, so it's never a surprise.
  */
-async function keepData(store) {
+async function keepData(saveMeta) {
   let kept = false;
   try {
     kept = (await navigator.storage?.persisted?.()) || (await navigator.storage?.persist?.()) || false;
@@ -206,7 +219,7 @@ async function keepData(store) {
     : onHome
       ? 'Your data is kept on this device. Back up now and then: it\'s your only copy if the phone is lost or reset.'
       : 'The browser may clear your data if you don\'t use the app for a while. Add it to your home screen, and back up now and then.';
-  store.setMeta('persisted', kept);
+  await saveMeta({ persisted: kept });
 }
 
 /**
@@ -214,7 +227,7 @@ async function keepData(store) {
  * nothing backed up, and a month after the last backup. "Later" puts it off
  * for a week.
  */
-function nudge(store) {
+function nudge(store, saveMeta) {
   const now = Date.now();
   const last = store.getMeta('lastBackup');
   const since = last || store.getMeta('firstUse') || now;
@@ -226,8 +239,8 @@ function nudge(store) {
   $('nudgeText').textContent = last
     ? `Your last backup was ${Math.floor((now - last) / DAY)} days ago. Your attendance is only on this phone, so save a fresh copy.`
     : "Your attendance is only on this phone. Save a backup so a lost or reset phone doesn't lose it.";
-  $('nudgeBackup').onclick = () => runtime.saveFile('/api/export.json');
-  $('nudgeLater').onclick = () => { store.setMeta('nudgeSnoozeUntil', now + 7 * DAY); el.hidden = true; };
+  $('nudgeBackup').onclick = () => attempt(() => runtime.saveFile('/api/export.json'));
+  $('nudgeLater').onclick = () => attempt(async () => { await saveMeta({ nudgeSnoozeUntil: now + 7 * DAY }); el.hidden = true; });
 }
 
 /* ---------- offline ---------- */

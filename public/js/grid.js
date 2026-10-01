@@ -70,9 +70,9 @@ function hourStatCells(m, all) {
   const hpct = has && m.projPctHrs != null ? `<td class="stat${flag}"${title}>${pct(m.projPctHrs)}%</td>` : dash;
   const gap = has ? gapCell(m.projGapHrs, m.workDays, fmtHrs2, `${title}`).replace('<td class="stat"', `<td class="stat${flag}"`) : dash;
   if (!all) return office + hpct + gap;
-  const avail = `<td class="stat">${has ? fmtHrs2(m.workDays * S.settings.stdDayHours) : '—'}</td>`;
+  const avail = `<td class="stat" title="(Office + Home days) × standard day hours">${has ? fmtHrs2(m.availableHrs) : '—'}</td>`;
   const reqH = `<td class="stat">${has ? fmtHrs2(m.projReqHrs) : '—'}</td>`;
-  const avg = `<td class="stat">${m.avgHrsPerOfficeDay == null ? '—' : fmtHrs2(m.avgHrsPerOfficeDay)}</td>`;
+  const avg = `<td class="stat">${m.pastAvgHrsPerOfficeDay == null ? '—' : fmtHrs2(m.pastAvgHrsPerOfficeDay)}</td>`;
   return office + avail + hpct + reqH + gap + avg + timed;
 }
 

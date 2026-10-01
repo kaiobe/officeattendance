@@ -41,9 +41,10 @@ export function daysStat(s, req, { label = 'Office days' } = {}) {
   const sg = signed(surplus);
   return block({
     label,
+    tag: s.futureWorkDays ? 'incl. plans' : '',
     value: `${pct(s.pctDays)}<span class="unit">%</span>`,
     chip: `<span class="chip-delta ${sg.cls}" title="Office days ahead (+) or short (−) of ${Math.round(req * 100)}%">${sg.text} d</span>`,
-    sub: `${fmtNum(s.officeDays)} of ${fmtNum(s.workDays)} days · target ${fmtNum(s.reqDays)}`,
+    sub: `${fmtNum(s.officeDays)} of ${fmtNum(s.workDays)} days · target ${fmtNum(s.requiredOfficeDays)}`,
     note: s.workingSickDays ? `${s.workingSickDays} working sick not counted` : '',
     meter: bar(s.pctDays, req, sg.cls === 'neg' ? 'critical' : 'good'),
   });
@@ -58,7 +59,7 @@ export function hoursStat(s, req, std, { plans = false, label = 'Office hours' }
   const work = plans ? s.workDays : s.pastWorkDays;
   const hasPlans = plans && s.plannedWorkDays > 0;
   const tag = hasPlans ? 'incl. plans' : '';
-  const why = `Office hours ahead (+) or short (−) of ${Math.round(req * 100)}% of a ${fmtHrs(std)} h day, for each work day`
+  const why = `Office hours ahead (+) or short (−) of ${Math.round(req * 100)}% × (Office + Home days) × a ${fmtHrs(std)} h standard day`
     + (hasPlans ? ', counting the hours planned on days still to come' : ' to date');
   if (!work) return block({ label, tag, value: '—', sub: 'No work days yet', meter: bar(0, req, 'idle'), title: why });
   const office = plans ? s.projOfficeHrs : s.pastOfficeHrs;
@@ -66,6 +67,7 @@ export function hoursStat(s, req, std, { plans = false, label = 'Office hours' }
   const surplus = -(plans ? s.projGapHrs : s.pastGapHrs);
   const sg = signed(surplus, fmtHrs2);
   const notes = [];
+  notes.push(`${Math.round(req * 100)}% × ${work} work ${plural(work, 'day')} × ${fmtHrs(std)} h`);
   if (hasPlans) notes.push(`${fmtHrs2(s.plannedOfficeHrs)} planned`);
   if (hasPlans && s.pastWorkDays) notes.push(`so far ${signedHtml(-s.pastGapHrs, fmtHrs2)}`);
   if (hasPlans && s.plannedUntimedOfficeDays) notes.push(`<span title="Planned office days with no times count as a standard ${fmtHrs(std)} h day">${s.plannedUntimedOfficeDays} est.</span>`);
@@ -81,14 +83,14 @@ export function hoursStat(s, req, std, { plans = false, label = 'Office hours' }
 
 /** Day length: background information, so no bar and no colour. */
 export function dayLengthStat(s, std, { label = 'Day length' } = {}) {
-  const avg = s.avgHrsPerOfficeDay;
+  const avg = s.pastAvgHrsPerOfficeDay;
   if (avg == null) return block({ label, value: '—', sub: `No office times yet · std ${fmtHrs(std)} h` });
   const d = signed(avg - std, fmtHrs2);
   return block({
     label,
     value: `${fmtHrs2(avg)}<span class="unit">h</span>`,
     chip: `<span class="chip-delta zero" title="Against the standard ${fmtHrs(std)} h day">${d.text}</span>`,
-    sub: `avg of ${s.timedOfficeDays} ${plural(s.timedOfficeDays, 'day')} · std ${fmtHrs(std)} h`,
+    sub: `avg of ${s.pastTimedOfficeDays} completed ${plural(s.pastTimedOfficeDays, 'day')} · std ${fmtHrs(std)} h`,
   });
 }
 

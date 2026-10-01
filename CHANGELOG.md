@@ -10,6 +10,27 @@ Versions are `MAJOR.MINOR.PATCH`:
 `npm run bump [major|minor|patch]` moves the number in every place it appears
 and opens an entry here. Nothing else should edit a version by hand.
 
+## 1.12.0 - 2026-10-01
+
+- **Confirmed monthly rules.** Both days and hours use Office + Home days. The hours
+  card shows its formula, days targets show whole days, and planned days are labelled.
+- **Accurate actuals.** Equal In/Out times count as zero recorded hours, future plans
+  stay out of average completed-day length, and a future FY has no month-to-date actuals.
+- **Reliable saves.** Queue mutations, retain pending day edits during refresh, ignore
+  stale navigation responses, and distinguish a successful save from a failed refresh.
+- **Safer data handling.** Reject malformed day records and backups without deleting
+  attendance. Restore and settings/calendar updates are atomic in SQLite and browser
+  storage. Calendar changes and year cleanup preserve custom notes.
+- **Browser storage.** Reload current data before writes, coordinate tabs with Web Locks,
+  roll back failed writes, and preserve unreadable data with a recovery download.
+- **Punching.** Use the app's time zone, guard double taps and date changes, and make
+  the home-screen In shortcut explicitly punch in.
+- **Standalone build.** Protect build destinations, use relative manifest URLs, and
+  cache complete releases without deleting other apps' caches. Updates wait for old
+  app tabs to close.
+- Limit NSW/ACT ANZAC holiday exceptions to declared years; document future-calendar
+  limitations. Fix Windows paths in version checks and expand regression coverage.
+
 ## 1.11.0 - 2026-10-01
 
 - **Cleaner cards.** Every card (desktop tiles, the Year tab, the phone's Today card and

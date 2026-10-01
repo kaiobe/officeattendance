@@ -8,7 +8,9 @@ export const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', 
 export const longDate = (s) => { const [y, m, d] = parseIso(s); return `${d} ${MONTH_NAMES[m - 1]} ${y}`; };
 export const shortDate = (s) => { const [y, m, d] = parseIso(s); return `${d} ${MONTH_SHORT[m - 1]} ${y}`; };
 
-export const nowHHMM = () => { const d = new Date(); return `${pad(d.getHours())}:${pad(d.getMinutes())}`; };
+export const nowHHMM = (timeZone, date = new Date()) => new Intl.DateTimeFormat('en-GB', {
+  timeZone: timeZone || undefined, hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
+}).format(date);
 
 /** Hours for prose: trailing zeros dropped, so a figure reads "76 hrs" not "76.00 hrs". */
 export const fmtHrs = (h) => (Math.round(h * 100) / 100).toLocaleString('en-AU', { maximumFractionDigits: 2 });

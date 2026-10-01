@@ -3,8 +3,8 @@ import { iso, weekdayOf, daysInMonth, addDays, isWeekend } from '../lib/dates.js
 /**
  * Australian public holidays, for each state and territory.
  *
- * Most are computable from rules that don't change, so this works for any
- * year. The exception is Victoria's Friday before the AFL Grand Final: the
+ * Most are computable from recurring rules, with dated exceptions kept below.
+ * Victoria's Friday before the AFL Grand Final is announced separately: the
  * Victorian Government sets it each year once the AFL releases its schedule,
  * so it can only come from the confirmed table below. A year that isn't in
  * that table has no Grand Final holiday and is reported as unconfirmed rather
@@ -116,11 +116,18 @@ const hobartShowThursday = (year) => addDays(nthWeekday(year, 10, 6, 4), -2);
 
 /**
  * When ANZAC Day falls on a weekend, some places add or move a day to the
- * Monday: on a Saturday or Sunday in NSW, the ACT and WA; on a Sunday only in
- * Queensland and the Northern Territory. Victoria, SA and Tasmania keep it
- * on the day.
+ * Monday: on a Saturday or Sunday in WA; on a Sunday in the ACT, Queensland
+ * and the Northern Territory. Dated declarations below add exceptions.
+ * Victoria, SA and Tasmania keep it on the day.
  */
-const ANZAC_MONDAY = { NSW: [6, 0], ACT: [6, 0], WA: [6, 0], QLD: [0], NT: [0], VIC: [], SA: [], TAS: [] };
+const ANZAC_MONDAY = { NSW: [], ACT: [0], WA: [6, 0], QLD: [0], NT: [0], VIC: [], SA: [], TAS: [] };
+
+// NSW's additional holidays are a 2026-2027 trial, not a permanent rule.
+// https://www.nsw.gov.au/ministerial-releases/minns-labor-government-announces-extra-public-holiday-year
+// ACT's Saturday exceptions are declared for 2020 and 2026; Sundays follow the Act.
+// https://www.cmtedd.act.gov.au/open_government/inform/act_government_media_releases/barr/2026/act-to-align-with-nsw-on-anzac-day-public-holidays
+// https://www.legislation.act.gov.au/ni/2019-784/
+const EXTRA_ANZAC_MONDAY = { NSW: [2026, 2027], ACT: [2020, 2026] };
 
 const MON = 1, TUE = 2, WED = 3;
 
@@ -204,7 +211,9 @@ export function publicHolidays(year, state = 'VIC') {
 
   // Substitutes, in calendar order so Christmas claims the earlier weekday.
   const subs = [[nyd, "New Year's Day"], [aus, 'Australia Day']];
-  if (ANZAC_MONDAY[state].includes(weekdayOf(anzac))) subs.push([anzac, 'ANZAC Day']);
+  if (ANZAC_MONDAY[state].includes(weekdayOf(anzac)) || EXTRA_ANZAC_MONDAY[state]?.includes(year)) {
+    subs.push([anzac, 'ANZAC Day']);
+  }
   subs.push([xmas, 'Christmas Day'], [boxing, state === 'SA' ? 'Proclamation Day' : 'Boxing Day']);
   for (const [date, name] of subs) {
     if (isWeekend(date)) add(nextFreeWeekday(date, taken), `${name} (substitute)`, true);

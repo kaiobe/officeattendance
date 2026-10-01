@@ -94,6 +94,7 @@ export function wireSettings() {
   $('setState').innerHTML = Object.entries(STATES).map(([k, name]) => `<option value="${k}">${name}</option>`).join('');
 
   $('settingsBtn').onclick = () => {
+    if (!S.summary) return;
     fillForm();
     $('settingsErr').textContent = '';
     $('calHint').hidden = true;

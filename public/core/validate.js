@@ -6,18 +6,33 @@
  */
 import { HttpError } from './errors.js';
 import { VALID } from './codes.js';
-import { isRealDate } from '../lib/dates.js';
+import { isRealDate, isTime } from '../lib/dates.js';
 import { isSettingKey } from './settings.js';
 import { STATES } from './holidays.js';
 
 const bad = (msg) => new HttpError(400, msg);
 
-const TIME = /^([01]\d|2[0-3]):[0-5]\d$/;
-export const isTime = (s) => typeof s === 'string' && TIME.test(s);
+export { isTime };
+
+export function requireObject(value, label) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) throw bad(`${label} must be a JSON object`);
+  return value;
+}
+
+function numberValue(value, label) {
+  if ((typeof value !== 'number' && typeof value !== 'string') || String(value).trim() === '') {
+    throw bad(`${label} must be a number`);
+  }
+  const n = Number(value);
+  if (!Number.isFinite(n)) throw bad(`${label} must be a number`);
+  return n;
+}
 
 /** A financial year number, or null when the value isn't a whole number. */
 export function asFy(raw) {
   if (raw == null || raw === '') return null;
+  if (typeof raw !== 'number' && typeof raw !== 'string') return null;
+  if (String(raw).trim() === '') return null;
   const n = Number(raw);
   return Number.isInteger(n) ? n : null;
 }
@@ -35,14 +50,19 @@ function optionalTime(v, which) {
 }
 
 /**
- * One day's record, ready to store. A missing code means "clear this day",
- * which is answered by clearedValue - the calendar's own code for that date.
+ * One day's record, ready to store. Null or an explicitly empty code clears it;
+ * a malformed record must never be mistaken for an instruction to delete data.
+ * Clearing uses clearedValue - the calendar's own code for that date.
  */
 export function parseDay(rec, date, clearedValue) {
-  if (rec == null || rec.code == null || rec.code === '') return clearedValue(date);
-  if (typeof rec !== 'object') throw bad(`bad record for ${date}`);
-  const code = String(rec.code).toUpperCase();
+  if (rec === null) return clearedValue(date);
+  requireObject(rec, `record for ${date}`);
+  if (!Object.hasOwn(rec, 'code')) throw bad(`missing code for ${date}`);
+  if (rec.code === null || rec.code === '') return clearedValue(date);
+  if (typeof rec.code !== 'string') throw bad(`code for ${date} must be text`);
+  const code = rec.code.toUpperCase();
   if (!VALID.has(code)) throw bad(`unknown code: ${code}`);
+  if (rec.comment != null && typeof rec.comment !== 'string') throw bad(`comment for ${date} must be text`);
   return {
     code,
     in: optionalTime(rec.in, 'in'),
@@ -53,28 +73,29 @@ export function parseDay(rec, date, clearedValue) {
 
 const RULES = {
   stdDayHours: (v) => {
-    const n = Number(v);
+    const n = numberValue(v, 'standard day');
     if (v === '' || v == null || !Number.isFinite(n) || n <= 0 || n > 24) throw bad('standard day must be between 0 and 24 hours');
     return n;
   },
   officeReqPct: (v) => {
-    const n = Number(v);
+    const n = numberValue(v, 'office requirement');
     if (v === '' || v == null || !Number.isFinite(n) || n < 0 || n > 1) throw bad('office requirement must be between 0% and 100%');
     return n;
   },
   nonWorkingWeekday: (v) => {
-    const n = Number(v);
+    const n = numberValue(v, 'non-working weekday');
     if (!Number.isInteger(n) || n < -1 || n > 6) throw bad('non-working weekday must be -1 (none) or 0-6');
     return n;
   },
   lastFy: (v) => {
     if (v == null) return null;
-    const n = Number(v);
+    const n = numberValue(v, 'lastFy');
     if (!Number.isInteger(n) || n < 1 || n > 99) throw bad('lastFy must be a financial year number');
     return n;
   },
   holidayState: (v) => {
-    const k = String(v ?? '').toUpperCase();
+    if (typeof v !== 'string') throw bad('state must be text');
+    const k = v.toUpperCase();
     if (!Object.hasOwn(STATES, k)) throw bad(`state must be one of ${Object.keys(STATES).join(', ')}`);
     return k;
   },
@@ -83,9 +104,9 @@ const RULES = {
 };
 
 /** The recognised settings in body, validated. Unknown keys are ignored. */
-export function parseSettings(body) {
+export function parseSettings(body = {}) {
   const patch = {};
-  if (body == null || typeof body !== 'object') return patch;
+  requireObject(body, 'settings');
   for (const [k, v] of Object.entries(body)) {
     if (isSettingKey(k) && Object.hasOwn(RULES, k)) patch[k] = RULES[k](v);
   }

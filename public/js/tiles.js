@@ -61,7 +61,7 @@ export function renderTiles() {
 }
 
 export function wireTiles() {
-  const choose = (period) => () => { S.period = period; renderTiles(); };
+  const choose = (period) => () => { if (!S.summary) return; S.period = period; renderTiles(); };
   $('periodYtd').onclick = () => { if (S.todayInFy) choose('ytd')(); };
   $('periodFull').onclick = choose('full');
   $('periodMtd').onclick = choose('mtd');

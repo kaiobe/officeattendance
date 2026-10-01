@@ -46,6 +46,7 @@ npm start                              # http://localhost:8080
 ```
 
 No npm dependencies — the server uses only Node built-ins, including `node:sqlite`.
+On Windows, use `npm start` with Node 24+; the shell script is for Unix systems.
 
 ### Tests
 
@@ -57,7 +58,11 @@ Node's built-in test runner, still no dependencies. It checks every FY27 month a
 original spreadsheet (counted cell by cell, in `test/fixtures/fy27-workbook.json`), the
 Victorian holidays against Business Victoria's published lists for 2025–2028, the whole API
 over a throwaway database with a clock the tests control — including what happens on
-1 October — and the version scheme.
+1 October — and the version scheme. Regression coverage also includes malformed
+backups, atomic writes in both stores, rapid edits and year navigation, browser
+storage failures, and the standalone build and service worker.
+
+The review and refactor notes are in [the October 2026 review](docs/REVIEW-2026-10-01.md).
 
 ---
 
@@ -94,6 +99,10 @@ command `npm run build:standalone` and output directory `dist`.
 
 To build it yourself: `npm run build:standalone` writes the site to `dist/`, and any
 static file server can host it.
+The manifest supports hosting below a subdirectory as well as at the site root.
+The builder refuses source directories and unrelated nonempty output folders.
+If an older `dist/` has no `.attendance-build.json` marker, keep that folder and
+choose a new empty output folder (`node scripts/build-standalone.mjs dist-new`).
 
 ### What your colleagues see
 
@@ -105,8 +114,10 @@ static file server can host it.
 - **After that:** it's the same app you use, with the tabs, punch button, month view and
   year grid. Backups and CSV exports go to the phone's share sheet (Files, Drive, email),
   or a normal download on a computer.
-- **Offline:** once opened, it works with no signal. Updates arrive the next time it's
-  opened with a connection.
+- **Offline:** after its assets have been cached over HTTPS (or localhost), it works
+  with no signal. A complete update downloads while online and takes over after all
+  open app tabs/windows close. Reopen the app to use it. This keeps each page on one
+  consistent release; other apps' caches are left alone.
 
 ### Keeping their data safe
 
@@ -121,6 +132,12 @@ it goes unused for a few weeks, unless it's been added to the home screen. So th
 
 The backup file is the only copy outside the phone. It's the same format as the server
 version's, so a colleague's backup could be restored into a server copy too.
+
+Edits reload the latest stored data before writing, and browsers with Web Locks
+coordinate writes across tabs. Storage failures roll back the in-memory change.
+Unreadable saved data is preserved and the load-error screen offers a raw recovery
+download, rather than replacing the original with an empty history. That recovery
+file is for repair; it is not necessarily a valid attendance backup.
 
 ### How it's put together
 
@@ -140,7 +157,7 @@ supply the same store interface, so there's one copy of every rule.
 |---|---|---|
 | `PORT` | `8080` | Port inside the container |
 | `DB_FILE` | `/data/attendance.db` | SQLite file; keep it on a volume |
-| `TZ_NAME` | `Australia/Melbourne` | Decides what "today" means in the app |
+| `TZ_NAME` | `Australia/Melbourne` | Sets the date and punch-button time; standalone uses the device zone |
 | `APP_TODAY` | unset | Testing only: pins today's date (`YYYY-MM-DD`) so date-sensitive checks repeat |
 
 ---
@@ -292,7 +309,7 @@ current year instead of laying down a calendar for 2001.
 
 On startup the app removes calendars nobody used outside that range. That's strictly
 limited to years holding nothing but weekends, non-working days and public holidays with
-no times against them — anything you logged is never touched, and a year with real entries
+no times or custom notes against them — anything you logged is never touched, and a year with real entries
 is always in the picker.
 
 Precedence is **weekend → public holiday → non-working day**, matching the original
@@ -316,16 +333,23 @@ the exact range and day count before it commits.
 
 ### Public holidays
 
-Public holidays come from the rules that define them (second Monday in March, first
-Tuesday in November, Easter, the weekend substitute rules), so they're correct for any
-year with no table to maintain. **Settings › Public holidays** picks the state or
+Public holidays use recurring rules (second Monday in March, first Tuesday in November,
+Easter, weekend substitutes) plus dated exceptions. **Settings › Public holidays** picks the state or
 territory, and changing it moves the calendar's holidays from today on. Days before
 today, and anything you've logged, stay as they were. Changing the non-working day
 moves NW days the same way.
 
+Custom notes on non-working days and holidays preserve those records during a calendar
+change. Automatically generated holiday names are recognised as calendar text.
+
 Every state and territory is checked against the Fair Work Ombudsman's 2026 and 2027
 lists. Victoria is also checked against Business Victoria's lists for 2025 to 2028, and
 against the nine holidays in the original FY27 spreadsheet.
+
+NSW's extra ANZAC Monday is currently declared for 2026 and 2027; ACT Saturday
+exceptions are recorded for 2020 and 2026. These declarations are not extrapolated
+to every year. Future announcements and older one-off holidays may need updates;
+see the linked sources in `public/core/holidays.js`.
 
 Some holidays make no difference to work days, so they're left out: evening-only ones
 (Christmas Eve and New Year's Eve from 6 or 7 pm in Queensland, SA and the NT) and
@@ -447,11 +471,13 @@ scripts/        bump.mjs (versions), test.mjs (test runner), build-standalone.mj
 | `W` | Weekend | — | — | — |
 
 Each code has a light colour pair (the workbook's fills) and a dark one, in
-`server/codes.js`. Every pair keeps its text at 4.5:1 or better against its fill.
+`public/core/codes.js`. Every pair keeps its text at 4.5:1 or better against its fill.
 
 ## The maths
 
-Mirrors the workbook exactly, including its two different day counts.
+Each month must meet **both** the days target and the hours target independently.
+Both use Office + Home days. Year totals are an overview: a surplus in one month
+does not satisfy another month's shortfall.
 
 **The monthly row** — this is what the office requirement is measured against:
 
@@ -460,12 +486,31 @@ WORK DAYS      = days coded O or H        (working sick excluded, as in the row 
 OFFICE DAYS    = days coded O
 % DAYS         = OFFICE DAYS / WORK DAYS
 REQ DAYS       = WORK DAYS × office requirement (50%)
+WHOLE DAY TARGET = ceil(REQ DAYS)
 GAP            = REQ DAYS − OFFICE DAYS      (positive = short)
 
 OFFICE HRS     = Σ (OUT − IN) on office days
 AVAILABLE HRS  = WORK DAYS × standard day (10.75 h)
+REQ HRS        = AVAILABLE HRS × office requirement (50%)
 % HRS          = OFFICE HRS / AVAILABLE HRS
 ```
+
+For example, 20 work days at 8 standard hours require at least **10 office days
+and 80 office hours**. Ten 6-hour office days meet the days rule but leave a
+20-hour shortfall. Standard day length is configurable; it is not inferred from
+the average length of office visits.
+
+Only days actually coded Office or Home enter the denominator. Fill in all work
+days to obtain a complete monthly result. Leave, holidays, weekends, non-working
+days and Working sick remain excluded, following the existing workbook.
+
+Month/Full year include future plans and label them. Future Office days without
+both times use the standard day as an estimate; past Office days without times
+contribute zero hours and are flagged. Equal In/Out times mean a recorded zero
+hours, not an estimate. The average office day uses completed days only.
+Month to date is empty for a financial year that has not started. An Office day
+in progress joins the to-date hours denominator when both times are recorded;
+the full-month projection already includes it.
 
 **The key totals** — shown under the grid, counted the way the workbook's key panel counts them:
 

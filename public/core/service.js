@@ -14,7 +14,7 @@ import { HttpError } from './errors.js';
 import { buildSummary } from './calc.js';
 import { CODES } from './codes.js';
 import { unconfirmedHolidayYears } from './holidays.js';
-import { asFy, requireDate, parseDay, parseSettings } from './validate.js';
+import { asFy, requireDate, parseDay, parseSettings, requireObject } from './validate.js';
 import { SKELETON_CODES, fyBounds, yearSpan, availableFys, clearedValueFor, layCalendar, needsCalendar } from './calendar.js';
 import { toCsv } from './csv.js';
 import { addDays, isWeekend, fyOfDate } from '../lib/dates.js';
@@ -102,6 +102,7 @@ export function createService({ store, today, tz = 'Australia/Melbourne', versio
       return {
         fy,
         today: now,
+        tz,
         todayInFy: now >= from && now <= to,
         settings,
         codes: CODES,
@@ -116,7 +117,7 @@ export function createService({ store, today, tz = 'Australia/Melbourne', versio
     },
 
     'PUT /api/days': ({ body }) => {
-      const entries = Object.entries(body.days || {});
+      const entries = Object.entries(requireObject(body.days, 'days'));
       if (!entries.length) throw new HttpError(400, 'no days supplied');
       for (const [date] of entries) requireDate(date);
       return { updated: writeDays(entries, store.getSettings()) };
@@ -189,7 +190,7 @@ export function createService({ store, today, tz = 'Australia/Melbourne', versio
      */
     'POST /api/import': ({ body }) => {
       const settingsPatch = parseSettings(body.settings);
-      const all = Object.entries(body.days && typeof body.days === 'object' ? body.days : {});
+      const all = Object.entries(requireObject(body.days, 'backup days'));
       const entries = all.filter(([date]) => requireDateOrSkip(date));
       const settings = { ...store.getSettings(), ...settingsPatch };
       const imported = writeDays(entries, settings, { replace: body.replace === true, strict: false });
@@ -197,6 +198,16 @@ export function createService({ store, today, tz = 'Australia/Melbourne', versio
       return { imported, skipped: all.length - entries.length };
     },
   };
+
+  // Every mutation is atomic, including settings plus calendar changes and
+  // attendance plus settings in a restore. Both stores support nested calls.
+  for (const [key, route] of Object.entries(routes)) {
+    if (key.startsWith('GET ')) continue;
+    routes[key] = (request) => {
+      requireObject(request.body, 'body');
+      return store.transaction(() => route(request));
+    };
+  }
 
   return {
     /** The handler for a method and path, or undefined. */

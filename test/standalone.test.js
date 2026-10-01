@@ -88,11 +88,45 @@ test('exports come back as files, and a backup restores onto another phone', () 
   assert.equal(b.store.getSettings().holidayState, 'NSW');
 });
 
-test('storage that holds rubbish starts afresh rather than failing', () => {
+test('unreadable storage is preserved instead of being overwritten with an empty calendar', () => {
   const storage = memoryStorage();
   storage.raw.set('office-attendance', '{not json');
   const { call } = phone(storage);
-  assert.equal(call('GET', '/api/state').settings.holidayState, 'NSW');
+  assert.throws(() => call('GET', '/api/state'), /original data has been kept/);
+  assert.equal(storage.raw.get('office-attendance'), '{not json');
+});
+
+test('two open stores preserve each other’s changes and settings', () => {
+  const storage = memoryStorage();
+  const a = phone(storage), b = phone(storage);
+  a.store.getAllDays(); b.store.getAllDays();
+  a.call('PUT', '/api/days', { days: { '2026-10-14': { code: 'O' } } });
+  b.call('PUT', '/api/days', { days: { '2026-10-15': { code: 'H' } } });
+  a.call('PUT', '/api/settings', { stdDayHours: 8 });
+  b.store.setMeta('lastBackup', 123);
+  assert.equal(b.store.getAllDays()['2026-10-14'].code, 'O');
+  assert.equal(a.store.getAllDays()['2026-10-15'].code, 'H');
+  assert.equal(b.store.getSettings().stdDayHours, 8);
+  assert.equal(a.store.getMeta('lastBackup'), 123);
+});
+
+test('failed direct settings and metadata writes do not change memory or stored data', () => {
+  const storage = memoryStorage({ failWrites: true });
+  const { store } = phone(storage);
+  assert.throws(() => store.setSettings({ stdDayHours: 3 }), /couldn't save/);
+  assert.equal(store.getSettings().stdDayHours, NEW_PHONE.stdDayHours);
+  assert.throws(() => store.setMeta('lastBackup', 123), /couldn't save/);
+  assert.equal(store.getMeta('lastBackup'), undefined);
+  assert.equal(storage.raw.size, 0);
+});
+
+test('null and array storage containers cannot be treated as a new attendance file', () => {
+  for (const raw of ['null', '[]', '{"days":null}', '{"settings":[]}', '{"days":{"2026-10-14":null}}']) {
+    const storage = memoryStorage();
+    storage.raw.set('office-attendance', raw);
+    assert.throws(() => phone(storage).call('GET', '/api/state'), /original data has been kept/);
+    assert.equal(storage.raw.get('office-attendance'), raw);
+  }
 });
 
 test('hasEntries: the calendar alone is not an entry', () => {

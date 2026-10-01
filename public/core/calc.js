@@ -1,10 +1,10 @@
 import { CODE_MAP } from './codes.js';
-import { MONTH_NAMES, daysInMonth, iso, fyMonths, minutesBetween } from '../lib/dates.js';
+import { MONTH_NAMES, daysInMonth, iso, fyMonths, minutesBetween, isTime } from '../lib/dates.js';
 
 const round2 = (n) => Math.round(n * 100) / 100;
 
 /**
- * Roll up one month. Mirrors the FY27 workbook exactly.
+ * Roll up one period. Both targets use Office + Home days; each must be met.
  *
  * The monthly row (drives the requirement):
  *   WORK DAYS = days coded O or H — working sick is excluded, as in the row formula
@@ -12,6 +12,7 @@ const round2 = (n) => Math.round(n * 100) / 100;
  *   REQ DAYS = WORK DAYS * officeReqPct
  *   GAP = REQ - OFFICE   (positive = short of requirement)
  *   AVAILABLE HRS = WORK DAYS * stdDayHours
+ *   REQ HRS = AVAILABLE HRS * officeReqPct
  *   OFFICE HRS = sum of (OUT - IN) on office days
  *
  * The key totals (a separate count, as in the workbook's key panel):
@@ -28,6 +29,7 @@ export function summarise(dates, days, settings, todayStr = null) {
   // Planned: office days still to come (or today, still in progress). Their
   // entered times are the plan; one without both times counts as a standard day.
   let plannedOfficeMins = 0, plannedUntimed = 0;
+  let futureWorkDays = 0;
   let daysWorked = 0, totalWorkDays = 0;
   const byCode = {};
   for (const date of dates) {
@@ -36,16 +38,18 @@ export function summarise(dates, days, settings, todayStr = null) {
     byCode[rec.code] = (byCode[rec.code] || 0) + 1;
     const def = CODE_MAP[rec.code];
     if (!def) continue;
+    const timed = def.office && isTime(rec.in) && isTime(rec.out);
     const mins = def.office ? minutesBetween(rec.in, rec.out) : 0;
-    const soFar = !todayStr || date < todayStr || (date === todayStr && (!def.office || mins > 0));
+    const soFar = !todayStr || date < todayStr || (date === todayStr && (!def.office || timed));
     if (def.workDay) { workDays++; if (soFar) pastWorkDays++; }
+    if (def.workDay && todayStr && date > todayStr) futureWorkDays++;
     if (def.worked) daysWorked++;
     if (def.keyWork) totalWorkDays++;
     if (def.office) {
       officeDays++;
-      if (mins > 0) { officeMins += mins; timedOfficeDays++; }
-      if (soFar) { pastOfficeDays++; if (mins > 0) { pastTimedOfficeDays++; pastOfficeMins += mins; } }
-      else if (mins > 0 && rec.in && rec.out) plannedOfficeMins += mins;
+      if (timed) { officeMins += mins; timedOfficeDays++; }
+      if (soFar) { pastOfficeDays++; if (timed) { pastTimedOfficeDays++; pastOfficeMins += mins; } }
+      else if (timed) plannedOfficeMins += mins;
       else plannedUntimed++;
     }
   }
@@ -63,6 +67,7 @@ export function summarise(dates, days, settings, todayStr = null) {
     workingSickDays: byCode.WS || 0,
     pctDays: workDays ? officeDays / workDays : null,
     reqDays: round2(reqDays),
+    requiredOfficeDays: Math.ceil(reqDays),
     gapDays: round2(reqDays - officeDays),
     officeHrs: round2(officeHrs),
     availableHrs: round2(availableHrs),
@@ -77,7 +82,9 @@ export function summarise(dates, days, settings, todayStr = null) {
     untimedPastOfficeDays: pastOfficeDays - pastTimedOfficeDays,
     // Office hours against the target, so far - the number to watch.
     pastWorkDays,
+    futureWorkDays,
     pastOfficeHrs: round2(pastOfficeMins / 60),
+    pastAvgHrsPerOfficeDay: pastTimedOfficeDays ? round2(pastOfficeMins / 60 / pastTimedOfficeDays) : null,
     pastAvailableHrs: round2(pastWorkDays * settings.stdDayHours),
     pastReqHrs: round2(pastWorkDays * settings.stdDayHours * settings.officeReqPct),
     pastGapHrs: round2(pastWorkDays * settings.stdDayHours * settings.officeReqPct - pastOfficeMins / 60),
@@ -85,17 +92,17 @@ export function summarise(dates, days, settings, todayStr = null) {
     // With plans: everything entered for the period - hours done, plus the
     // hours planned on days still to come - against the target for all its
     // work days. What a month will come to if the plan holds.
-    ...withPlans(pastOfficeMins, plannedOfficeMins, plannedUntimed, workDays, pastWorkDays, settings),
+    ...withPlans(pastOfficeMins, plannedOfficeMins, plannedUntimed, workDays, settings),
+    plannedWorkDays: workDays - pastWorkDays,
   };
 }
 
-function withPlans(pastMins, plannedMins, plannedUntimed, workDays, pastWorkDays, settings) {
+function withPlans(pastMins, plannedMins, plannedUntimed, workDays, settings) {
   const estimated = plannedUntimed * settings.stdDayHours;
   const projOfficeHrs = pastMins / 60 + plannedMins / 60 + estimated;
   const available = workDays * settings.stdDayHours;
   const req = available * settings.officeReqPct;
   return {
-    plannedWorkDays: workDays - pastWorkDays,
     plannedOfficeHrs: round2(plannedMins / 60 + estimated),
     plannedUntimedOfficeDays: plannedUntimed,
     projOfficeHrs: round2(projOfficeHrs),
@@ -124,14 +131,14 @@ export function buildSummary(fy, days, settings, todayStr) {
     : todayStr > all[all.length - 1] ? 11
     : 0;
   const src = months[idx];
-  const mtdDates = containsToday ? src.dates.filter((d) => d <= todayStr) : src.dates;
+  const mtdDates = src.dates.filter((d) => d <= todayStr);
   const mtd = {
     year: src.year,
     month: src.month,
     name: src.name,
     monthIndex: idx,
     partial: containsToday,
-    through: mtdDates[mtdDates.length - 1],
+    through: mtdDates.at(-1) || null,
     ...summarise(mtdDates, days, settings, todayStr),
   };
 

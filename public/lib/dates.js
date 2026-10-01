@@ -18,6 +18,8 @@ export const pad = (n) => String(n).padStart(2, '0');
 export const iso = (y, m, d) => `${y}-${pad(m)}-${pad(d)}`;
 export const parseIso = (s) => s.split('-').map(Number);
 
+export const isTime = (s) => typeof s === 'string' && /^([01]\d|2[0-3]):[0-5]\d$/.test(s);
+
 export const daysInMonth = (y, m) => new Date(Date.UTC(y, m, 0)).getUTCDate();
 
 /** True for a date that exists on the calendar - 2027-02-29 and 2026-13-01 do not. */
@@ -68,7 +70,7 @@ export function datesBetween(from, to) {
 
 /** Minutes between two "HH:MM" times. An out earlier than the in is read as a shift across midnight. */
 export function minutesBetween(inT, outT) {
-  if (!inT || !outT) return 0;
+  if (!isTime(inT) || !isTime(outT)) return 0;
   const [ih, im] = inT.split(':').map(Number);
   const [oh, om] = outT.split(':').map(Number);
   let mins = oh * 60 + om - (ih * 60 + im);

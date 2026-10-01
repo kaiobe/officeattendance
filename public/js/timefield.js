@@ -13,9 +13,9 @@
  * the same contract <input type="time"> had.
  */
 import { flash } from './dialogs.js';
+export { isTime } from '../lib/dates.js';
 
 const pad = (n) => String(n).padStart(2, '0');
-export const isTime = (s) => /^([01]\d|2[0-3]):[0-5]\d$/.test(s);
 
 /** A typed time as HH:MM, '' for an empty box, or null when it isn't a time. */
 export function normaliseTime(raw) {

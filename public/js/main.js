@@ -64,6 +64,7 @@ function renderAll() {
  * range to what's already picked.
  */
 function selectDate(date, extend = false, toggle = false) {
+  if (!S.summary) return;
   if (toggle && fyOfDate(date) === S.fy) {
     const picked = new Set(S.range.length > 1 ? S.range : [S.sel]);
     if (extend && S.anchor) {
@@ -135,9 +136,9 @@ function openMonth(idx) {
  * today if it has changed.
  */
 async function catchUpWithToday() {
-  if (!S.today) return;
+  if (!S.today || anyDialogOpen()) return;
   const today = await serverToday().catch(() => null);
-  if (!today || today === S.today) return;
+  if (!today || today === S.today || anyDialogOpen()) return;
   const wasOnToday = S.sel === S.today;
   if (wasOnToday) { S.sel = today; S.anchor = today; S.range = []; }
   await attempt(() => loadState(wasOnToday ? fyOfDate(today) : S.fy));
@@ -183,7 +184,7 @@ function handleShortcut() {
   history.replaceState(null, '', location.pathname);
   setTab('today');
   if (S.sel !== S.today) selectDate(S.today);
-  punch();
+  punch('in');
 }
 
 export async function boot(appVersion) {
@@ -221,7 +222,7 @@ export async function boot(appVersion) {
   // open dialog, where it would change the day a question is about.
   const STEP = { ArrowLeft: -1, ArrowRight: 1, ArrowUp: -7, ArrowDown: 7 };
   document.addEventListener('keydown', (e) => {
-    if (!(e.key in STEP) || anyDialogOpen() || e.altKey || e.ctrlKey || e.metaKey) return;
+    if (!S.summary || !(e.key in STEP) || anyDialogOpen() || e.altKey || e.ctrlKey || e.metaKey) return;
     if (['INPUT', 'SELECT', 'TEXTAREA'].includes(e.target.tagName)) return;
     e.preventDefault();
     const vertical = e.key === 'ArrowUp' || e.key === 'ArrowDown';
@@ -253,6 +254,15 @@ export async function boot(appVersion) {
     const wrap = document.createElement('div');
     wrap.className = 'wrap';
     wrap.append(p);
+    if (runtime.saveRecovery) {
+      const recovery = document.createElement('button');
+      recovery.textContent = 'Download saved data';
+      recovery.onclick = async () => {
+        try { await runtime.saveRecovery(); }
+        catch (error) { p.textContent = error.message; }
+      };
+      wrap.append(recovery);
+    }
     document.body.replaceChildren(wrap);
     return;
   }

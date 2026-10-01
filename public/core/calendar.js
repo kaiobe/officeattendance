@@ -3,15 +3,36 @@
  * the app goes, and the weekends / public holidays / non-working days that
  * every year is laid out with before anything is logged.
  */
-import { holidaysBetween } from './holidays.js';
+import { holidaysBetween, publicHolidays, STATES } from './holidays.js';
 import { fyOfDate, fyStart, fyEnd, fyMonths, daysInMonth, iso, weekdayOf, isWeekend, isRealDate, datesBetween } from '../lib/dates.js';
 
-/** Codes the calendar lays down by itself. A year holding only these has nothing logged in it. */
+/** Codes the calendar lays down by itself; times or custom notes still count as logged. */
 export const SKELETON_CODES = new Set(['W', 'NW', 'PH']);
 
 export const fyBounds = (fy) => [fyStart(fy), fyEnd(fy)];
 
-const isLogged = (r) => !SKELETON_CODES.has(r.code) || r.in_time || r.out_time;
+const holidayNames = new Map();
+function hasCalendarNote(r) {
+  if (!r.comment) return false;
+  if (r.code !== 'PH' || !isRealDate(r.date)) return true;
+  const year = Number(r.date.slice(0, 4));
+  if (!holidayNames.has(year)) {
+    const names = new Map();
+    for (const state of Object.keys(STATES)) {
+      for (const { date, name } of publicHolidays(year, state)) {
+        if (!names.has(date)) names.set(date, new Set());
+        names.get(date).add(name);
+      }
+    }
+    holidayNames.set(year, names);
+  }
+  // Holiday names written by the calendar are automatic; any other text is
+  // a user's note. Check every state so changing states can move old holidays.
+  return !holidayNames.get(year).get(r.date)?.has(r.comment);
+}
+
+export const isLoggedDay = (r) => !!(!SKELETON_CODES.has(r.code)
+  || r.in_time || r.out_time || r.in || r.out || hasCalendarNote(r));
 
 /**
  * The span of financial years the app works with, worked out afresh on every
@@ -30,7 +51,7 @@ export function yearSpan(store, settings, today) {
   const logged = new Set();
   for (const r of store.getDaySummaries()) {
     if (!isRealDate(r.date)) continue;
-    if (isLogged(r)) logged.add(fyOfDate(r.date));
+    if (isLoggedDay(r)) logged.add(fyOfDate(r.date));
   }
   const manual = Number.isInteger(settings.lastFy) ? settings.lastFy : 0;
   const first = Math.min(current, ...logged);
@@ -104,13 +125,13 @@ export function layCalendar(store, fy, settings, { overwrite = false, reapplyFro
       if (onlyFrom && date < onlyFrom) continue;
       const prev = existing[date];
       const want = skeletonRecord(date, settings, holidays, prev?.code === 'PH' ? null : prev?.comment);
-      const ours = prev && (prev.code === 'NW' || prev.code === 'PH') && !prev.in && !prev.out;
+      const ours = prev && (prev.code === 'NW' || prev.code === 'PH') && !isLoggedDay({ date, ...prev });
       const reapply = reapplyFrom && date >= reapplyFrom && ours;
       if (!want) {
         if (reapply) { store.upsertDay(date, null); changed++; }
         continue;
       }
-      if (prev && prev.code === want.code) continue;
+      if (prev && prev.code === want.code && !(reapply && prev.comment !== want.comment)) continue;
       if (prev && !overwrite && !reapply) continue;
       store.upsertDay(date, want);
       changed++;
@@ -144,7 +165,7 @@ export function tidyYears(store, span) {
   store.transaction(() => {
     for (const r of store.getDaySummaries()) {
       if (!isRealDate(r.date)) {
-        if (!isLogged(r)) { store.upsertDay(r.date, null); removed++; }
+        if (!isLoggedDay(r)) { store.upsertDay(r.date, null); removed++; }
         continue;
       }
       const fy = fyOfDate(r.date);
@@ -153,7 +174,7 @@ export function tidyYears(store, span) {
     }
     for (const [fy, rows] of byFy) {
       if (fy >= span.current - 1 && fy <= span.last) continue;   // this year, last year, and ahead
-      if (rows.some(isLogged)) continue;
+      if (rows.some(isLoggedDay)) continue;
       const [from, to] = fyBounds(fy);
       store.deleteDaysBetween(from, to);
       removed += rows.length;

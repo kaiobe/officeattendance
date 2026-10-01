@@ -1,3 +1,6 @@
+# Keep text files consistent on Windows, macOS and Linux.
+* text=auto eol=lf
+
 # Images are binary: never line-ending converted
 *.png binary
 *.ico binary

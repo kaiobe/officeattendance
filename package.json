@@ -1,6 +1,6 @@
 {
   "name": "office-attendance",
-  "version": "1.11.0",
+  "version": "1.12.0",
   "private": true,
   "type": "module",
   "description": "Self-hosted office attendance tracker (days + hours) for an Oct-Sep financial year",

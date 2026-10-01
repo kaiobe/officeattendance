@@ -145,7 +145,7 @@ export function renderMonth() {
   // hours done plus the times entered on days still to come, with where it
   // stands today in the note. A month already over is just what happened.
   const req = S.settings.officeReqPct, std = S.settings.stdDayHours;
-  const avg = m.avgHrsPerOfficeDay;
+  const avg = m.pastAvgHrsPerOfficeDay;
   $('mStats').innerHTML = daysStat(m, req, { label: 'Days' }) + hoursStat(m, req, std, { plans: true, label: 'Hours' })
     + `<p class="mfoot">${avg == null ? '' : `Avg office day ${fmtHrs2(avg)} h · std ${fmtHrs(std)} h`}</p>`;
   renderSheet();

@@ -45,14 +45,17 @@ function stmt(db, sql) {
 }
 
 /** Run fn inside one transaction, rolling back if it throws. */
+let savepointId = 0;
 export function transaction(db, fn) {
-  db.exec('BEGIN');
+  const name = `attendance_${++savepointId}`;
+  db.exec(`SAVEPOINT ${name}`);
   try {
     const out = fn();
-    db.exec('COMMIT');
+    db.exec(`RELEASE SAVEPOINT ${name}`);
     return out;
   } catch (e) {
-    db.exec('ROLLBACK');
+    db.exec(`ROLLBACK TO SAVEPOINT ${name}`);
+    db.exec(`RELEASE SAVEPOINT ${name}`);
     throw e;
   }
 }
@@ -93,7 +96,7 @@ export function getAllDays(db) {
 }
 
 /** Just the columns the year bookkeeping needs, for every stored day. */
-export const getDaySummaries = (db) => stmt(db, 'SELECT date, code, in_time, out_time FROM days').all();
+export const getDaySummaries = (db) => stmt(db, 'SELECT date, code, in_time, out_time, comment FROM days').all();
 
 /** Write one day, or delete it when rec is null or has no code. */
 export function upsertDay(db, date, rec) {

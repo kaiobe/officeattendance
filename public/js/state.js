@@ -7,7 +7,7 @@ import { flash } from './dialogs.js';
 import { fyOfDate, fyStart } from '../lib/dates.js';
 
 export const S = {
-  fy: null, today: '', todayInFy: false, settings: {}, codes: [], codeMap: {}, days: {}, summary: null,
+  fy: null, today: '', tz: '', todayInFy: false, settings: {}, codes: [], codeMap: {}, days: {}, summary: null,
   unconfirmed: [], lastFy: null, fys: [], version: null, build: null,
   sel: null, anchor: null, range: [], period: 'mtd', monthIdx: null,
 };
@@ -29,9 +29,10 @@ export const runtime = {
   beforeLoad: null,       // async, before the first loadState
   afterLoad: null,        // after the first loadState
   saveFile: null,         // (path) => save or share an export
+  saveRecovery: null,     // download the original browser data if it cannot be read
 };
 
-export async function api(path, opts = {}) {
+async function request(path, opts) {
   if (runtime.transport) return runtime.transport(opts.method || 'GET', path, opts.body ? JSON.parse(opts.body) : {});
   const res = await fetch(path, { ...opts, headers: { 'content-type': 'application/json', ...opts.headers } });
   const body = await res.json().catch(() => ({}));
@@ -39,20 +40,45 @@ export async function api(path, opts = {}) {
   return body;
 }
 
+let mutations = Promise.resolve();
+export function api(path, opts = {}) {
+  if (['GET', 'HEAD'].includes(opts.method || 'GET')) return request(path, opts);
+  const result = mutations.then(() => request(path, opts));
+  mutations = result.catch(() => {});
+  return result;
+}
+
 /**
  * Responses can arrive out of order - a save's refresh still in flight when
  * you switch year, say. Each state request is numbered, and a response older
- * than one already applied is dropped rather than painting the wrong year.
+ * than the latest request is dropped rather than painting the wrong year.
  */
-let requested = 0, applied = 0;
+let requested = 0, navigation = null;
+let confirmedDays = {};
+const pendingDays = new Map();
+
+function mergeDays(base, changes) {
+  const out = { ...base };
+  for (const [date, rec] of Object.entries(changes)) {
+    if (fyOfDate(date) !== S.fy) continue;
+    if (rec === null) delete out[date];
+    else out[date] = { ...rec };
+  }
+  return out;
+}
+
+function showPendingDays() {
+  S.days = { ...confirmedDays };
+  for (const days of pendingDays.values()) S.days = mergeDays(S.days, days);
+}
 
 function applyState(data, n) {
-  if (n < applied) return false;
-  applied = n;
+  if (n !== requested) return false;
   const yearChanged = data.fy !== S.fy;
   Object.assign(S, {
     fy: data.fy,
     today: data.today,
+    tz: data.tz || '',
     todayInFy: data.todayInFy,
     settings: data.settings,
     codes: data.codes,
@@ -65,6 +91,8 @@ function applyState(data, n) {
     version: data.version,
     build: data.build,
   });
+  confirmedDays = data.days;
+  showPendingDays();
   if (!S.todayInFy && S.period === 'ytd') S.period = 'mtd';
   if (!S.sel || fyOfDate(S.sel) !== S.fy) {
     S.sel = fyOfDate(S.today) === S.fy ? S.today : fyStart(S.fy);
@@ -78,12 +106,21 @@ function applyState(data, n) {
 /** Load a financial year (or the server's default) and select a sensible day in it. */
 export async function loadState(fy) {
   const n = ++requested;
-  const data = await api(`/api/state${fy ? `?fy=${fy}` : ''}`);
-  if (applyState(data, n)) changed('load');
+  const task = api(`/api/state${fy ? `?fy=${fy}` : ''}`);
+  navigation = task;
+  try {
+    const data = await task;
+    const accepted = applyState(data, n);
+    if (accepted) changed('load');
+    return accepted;
+  } finally {
+    if (navigation === task) navigation = null;
+  }
 }
 
 /** Re-read the open year after a change, keeping the selection. */
 export async function refresh() {
+  while (navigation) await navigation.catch(() => {});
   const n = ++requested;
   const data = await api(`/api/state?fy=${S.fy}`);
   if (data.fy !== S.fy) return;          // the year moved on while this was in flight
@@ -96,21 +133,32 @@ export async function refresh() {
  * Resolves true when the save went through. `quiet` skips the "Saved" flag,
  * for callers that confirm the save their own way.
  */
-let queue = Promise.resolve();
-export function saveDays(days, msg, { quiet = false } = {}) {
-  const run = async () => {
-    try {
-      await api('/api/days', { method: 'PUT', body: JSON.stringify({ days }) });
-      await refresh();
-      if (!quiet) flash(msg);
-      return true;
-    } catch (e) {
-      flash(e.message, true);
-      return false;
-    }
-  };
-  queue = queue.then(run, run);
-  return queue;
+export async function saveDays(days, msg, { quiet = false } = {}) {
+  // Later edits must see earlier pending edits, even before the network replies.
+  // Keep them over refreshes so an older response cannot erase a newer input.
+  const snapshot = JSON.parse(JSON.stringify(days));
+  const token = Symbol();
+  pendingDays.set(token, snapshot);
+  showPendingDays();
+  try {
+    await api('/api/days', { method: 'PUT', body: JSON.stringify({ days: snapshot }) });
+  } catch (e) {
+    pendingDays.delete(token);
+    showPendingDays();
+    changed('refresh');
+    flash(e.message, true);
+    return false;
+  }
+  confirmedDays = mergeDays(confirmedDays, snapshot);
+  pendingDays.delete(token);
+  showPendingDays();
+  try { await refresh(); }
+  catch (e) {
+    flash(`Saved, but the totals could not refresh: ${e.message}`, true);
+    return true;
+  }
+  if (!quiet) flash(msg);
+  return true;
 }
 
 /** What the server says today is - for noticing that midnight has passed with the page open. */

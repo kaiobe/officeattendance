@@ -1,12 +1,14 @@
 /** The "Log a day" card: the selected date, the code chips, times and comment. */
-import { S, saveDays } from './state.js';
+import { S, saveDays, serverToday, loadState } from './state.js';
 import { $, longDate, shortDate, nowHHMM, fmtHrs, plural, codeVars } from './format.js';
 import { askConfirm, flash } from './dialogs.js';
 import { isTime } from './timefield.js';
-import { DAY_NAMES, weekdayOf, minutesBetween, isWeekend } from '../lib/dates.js';
+import { DAY_NAMES, weekdayOf, minutesBetween, isWeekend, fyOfDate } from '../lib/dates.js';
 
 /** Codes the calendar puts down by itself - not something you log. */
 const CALENDAR = new Set(['W', 'NW', 'PH']);
+const clockTime = () => nowHHMM(S.tz);
+let punching = false;
 
 let rerender = () => {};
 let renderedFor = null;          // the date the fields currently show
@@ -80,6 +82,7 @@ export function renderLog() {
  * In gets a nudge, in case it was meant as a daytime time.
  */
 function updateHrs() {
+  if (!S.summary || !$('inTime')) return;
   // Only whole times count - not one still being typed.
   const valid = (v) => (isTime(v) ? v : '');
   const inV = valid($('inTime').value), outV = valid($('outTime').value);
@@ -88,8 +91,8 @@ function updateHrs() {
   let text = '';
   if (inV && outV) {
     text = `${fmtHrs(minutesBetween(inV, outV) / 60)} hrs${overnight ? ' · Out is before In' : ''}`;
-  } else if (inV && !outV && S.sel === S.today && nowHHMM() > inV) {
-    const mins = minutesBetween(inV, nowHHMM());
+  } else if (inV && !outV && S.sel === S.today && clockTime() > inV) {
+    const mins = minutesBetween(inV, clockTime());
     text = `${Math.floor(mins / 60)} h ${mins % 60} m so far`;
   }
   el.textContent = text;
@@ -106,9 +109,9 @@ function punchMode() {
 }
 
 function updatePunch() {
-  const mode = punchMode(), now = nowHHMM(), b = $('punchBtn');
+  const mode = punchMode(), now = clockTime(), b = $('punchBtn');
   const weekend = isWeekend(S.sel);
-  b.disabled = weekend;
+  b.disabled = weekend || punching;
   const label = weekend ? 'Weekend' : mode === 'in' ? 'In now' : 'Out now';
   b.classList.toggle('out', mode === 'out');
   b.classList.toggle('again', mode === 'again');
@@ -195,6 +198,7 @@ const shownTime = (t) => t || 'not set';
 const asking = new Set();          // fields with a question already on screen
 async function onTimeEdited(which) {
   if (asking.has(which)) return;    // a second change event for the same edit
+  const date = S.sel;
   const el = $(which === 'in' ? 'inTime' : 'outTime');
   const prev = (S.prevTimes || {})[which] || '';
   const next = el.value;
@@ -208,6 +212,7 @@ async function onTimeEdited(which) {
         : `${shortDate(S.sel)} has a recorded ${label} time of ${prev}. Remove it?`,
       ok: next ? 'Change it' : 'Remove it',
     }).finally(() => asking.delete(which));
+    if (S.sel !== date) return;
     if (!ok) { el.value = prev; updateHrs(); return; }
   }
   S.prevTimes[which] = next;
@@ -220,23 +225,43 @@ async function onTimeEdited(which) {
  * it codes the day O whatever it was before; the confirmation says so, and
  * Undo puts the day back exactly as it was.
  */
-export async function punch() {
+export async function punch(force = null) {
+  if (!S.summary || punching) return;
+  punching = true;
+  updatePunch();
+  try { await punchNow(force); }
+  finally { punching = false; updateHrs(); }
+}
+
+async function punchNow(force) {
+  // Verify the date at the action itself: a tab can stay visible across midnight
+  // without firing a focus/visibility event. Keep deliberately selected past days.
+  try {
+    const selected = S.sel, wasToday = selected === S.today;
+    const today = await serverToday();
+    if (S.sel !== selected) return;
+    if (wasToday && today !== S.today) {
+      S.sel = today; S.anchor = today; S.range = [];
+      if (!(await loadState(fyOfDate(today)))) return;
+    }
+  } catch (e) { flash(e.message, true); return; }
   if (isWeekend(S.sel)) return weekendRefused();
-  const which = punchMode() === 'in' ? 'in' : 'out';
+  const date = S.sel;
+  const which = force === 'in' || punchMode() === 'in' ? 'in' : 'out';
   const field = which === 'in' ? 'inTime' : 'outTime', label = which === 'in' ? 'In' : 'Out';
-  const now = nowHHMM(), current = $(field).value;
+  const now = clockTime(), current = $(field).value;
   if (!(await confirmReplace(current, {
     title: `Change the ${label} time?`,
     body: `${shortDate(S.sel)} already has an ${label} time of ${current}. Change it to ${now}?`,
     ok: 'Change it',
   }))) return;
-  const date = S.sel;
+  if (S.sel !== date) return;
   const before = S.days[date] ? { ...S.days[date] } : null;
   $(field).value = now;
   S.prevTimes[which] = now;
   updateHrs();
   const ok = await saveDays({ [date]: { code: 'O', ...fields() } }, null, { quiet: true });
-  if (!ok) return;
+  if (!ok || S.sel !== date) return;
   showPunched(`${label} at ${now}${before?.code === 'O' ? '' : ' · saved as an Office day'}`,
     () => saveDays({ [date]: before }, 'Put back as it was'));
 }
@@ -260,6 +285,7 @@ export function wireLog(ctx) {
   $('comment').onchange = saveCurrent;
 
   $('stdTimes').onclick = async () => {
+    const date = S.sel;
     const inV = $('inTime').value, outV = $('outTime').value;
     const { defaultIn, defaultOut } = S.settings;
     if (!(await confirmReplace(inV || outV, {
@@ -267,6 +293,7 @@ export function wireLog(ctx) {
       body: `${shortDate(S.sel)} is ${shownTime(inV)} to ${shownTime(outV)}. Replace with the standard day, ${defaultIn} to ${defaultOut}?`,
       ok: 'Replace',
     }))) return;
+    if (S.sel !== date) return;
     $('inTime').value = defaultIn;
     $('outTime').value = defaultOut;
     updateHrs();
@@ -279,12 +306,14 @@ export function wireLog(ctx) {
   setInterval(updateHrs, 20000);
 
   $('clearTimes').onclick = async () => {
+    const date = S.sel;
     const inV = $('inTime').value, outV = $('outTime').value;
     if (!(await confirmReplace(inV || outV, {
       title: 'Clear the times?',
       body: `${shortDate(S.sel)} is ${shownTime(inV)} to ${shownTime(outV)}. Clearing removes both.`,
       ok: 'Clear them',
     }))) return;
+    if (S.sel !== date) return;
     $('inTime').value = '';
     $('outTime').value = '';
     updateHrs();
