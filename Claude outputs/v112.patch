@@ -1,0 +1,2363 @@
+diff --git a/.gitattributes b/.gitattributes
+index c20be85..46dcc9d 100644
+--- a/.gitattributes
++++ b/.gitattributes
+@@ -1,3 +1,6 @@
++# Keep text files consistent on Windows, macOS and Linux.
++* text=auto eol=lf
++
+ # Images are binary: never line-ending converted
+ *.png binary
+ *.ico binary
+diff --git a/CHANGELOG.md b/CHANGELOG.md
+index c197166..404f107 100644
+--- a/CHANGELOG.md
++++ b/CHANGELOG.md
+@@ -10,6 +10,27 @@ Versions are `MAJOR.MINOR.PATCH`:
+ `npm run bump [major|minor|patch]` moves the number in every place it appears
+ and opens an entry here. Nothing else should edit a version by hand.
+ 
++## 1.12.0 - 2026-10-01
++
++- **Confirmed monthly rules.** Both days and hours use Office + Home days. The hours
++  card shows its formula, days targets show whole days, and planned days are labelled.
++- **Accurate actuals.** Equal In/Out times count as zero recorded hours, future plans
++  stay out of average completed-day length, and a future FY has no month-to-date actuals.
++- **Reliable saves.** Queue mutations, retain pending day edits during refresh, ignore
++  stale navigation responses, and distinguish a successful save from a failed refresh.
++- **Safer data handling.** Reject malformed day records and backups without deleting
++  attendance. Restore and settings/calendar updates are atomic in SQLite and browser
++  storage. Calendar changes and year cleanup preserve custom notes.
++- **Browser storage.** Reload current data before writes, coordinate tabs with Web Locks,
++  roll back failed writes, and preserve unreadable data with a recovery download.
++- **Punching.** Use the app's time zone, guard double taps and date changes, and make
++  the home-screen In shortcut explicitly punch in.
++- **Standalone build.** Protect build destinations, use relative manifest URLs, and
++  cache complete releases without deleting other apps' caches. Updates wait for old
++  app tabs to close.
++- Limit NSW/ACT ANZAC holiday exceptions to declared years; document future-calendar
++  limitations. Fix Windows paths in version checks and expand regression coverage.
++
+ ## 1.11.0 - 2026-10-01
+ 
+ - **Cleaner cards.** Every card (desktop tiles, the Year tab, the phone's Today card and
+diff --git a/README.md b/README.md
+index e24d42c..fc15c65 100644
+--- a/README.md
++++ b/README.md
+@@ -46,6 +46,7 @@ npm start                              # http://localhost:8080
+ ```
+ 
+ No npm dependencies — the server uses only Node built-ins, including `node:sqlite`.
++On Windows, use `npm start` with Node 24+; the shell script is for Unix systems.
+ 
+ ### Tests
+ 
+@@ -57,7 +58,11 @@ Node's built-in test runner, still no dependencies. It checks every FY27 month a
+ original spreadsheet (counted cell by cell, in `test/fixtures/fy27-workbook.json`), the
+ Victorian holidays against Business Victoria's published lists for 2025–2028, the whole API
+ over a throwaway database with a clock the tests control — including what happens on
+-1 October — and the version scheme.
++1 October — and the version scheme. Regression coverage also includes malformed
++backups, atomic writes in both stores, rapid edits and year navigation, browser
++storage failures, and the standalone build and service worker.
++
++The review and refactor notes are in [the October 2026 review](docs/REVIEW-2026-10-01.md).
+ 
+ ---
+ 
+@@ -94,6 +99,10 @@ command `npm run build:standalone` and output directory `dist`.
+ 
+ To build it yourself: `npm run build:standalone` writes the site to `dist/`, and any
+ static file server can host it.
++The manifest supports hosting below a subdirectory as well as at the site root.
++The builder refuses source directories and unrelated nonempty output folders.
++If an older `dist/` has no `.attendance-build.json` marker, keep that folder and
++choose a new empty output folder (`node scripts/build-standalone.mjs dist-new`).
+ 
+ ### What your colleagues see
+ 
+@@ -105,8 +114,10 @@ static file server can host it.
+ - **After that:** it's the same app you use, with the tabs, punch button, month view and
+   year grid. Backups and CSV exports go to the phone's share sheet (Files, Drive, email),
+   or a normal download on a computer.
+-- **Offline:** once opened, it works with no signal. Updates arrive the next time it's
+-  opened with a connection.
++- **Offline:** after its assets have been cached over HTTPS (or localhost), it works
++  with no signal. A complete update downloads while online and takes over after all
++  open app tabs/windows close. Reopen the app to use it. This keeps each page on one
++  consistent release; other apps' caches are left alone.
+ 
+ ### Keeping their data safe
+ 
+@@ -122,6 +133,12 @@ it goes unused for a few weeks, unless it's been added to the home screen. So th
+ The backup file is the only copy outside the phone. It's the same format as the server
+ version's, so a colleague's backup could be restored into a server copy too.
+ 
++Edits reload the latest stored data before writing, and browsers with Web Locks
++coordinate writes across tabs. Storage failures roll back the in-memory change.
++Unreadable saved data is preserved and the load-error screen offers a raw recovery
++download, rather than replacing the original with an empty history. That recovery
++file is for repair; it is not necessarily a valid attendance backup.
++
+ ### How it's put together
+ 
+ The logic that doesn't need Node lives in `public/core/`: calculations, holidays,
+@@ -140,7 +157,7 @@ supply the same store interface, so there's one copy of every rule.
+ |---|---|---|
+ | `PORT` | `8080` | Port inside the container |
+ | `DB_FILE` | `/data/attendance.db` | SQLite file; keep it on a volume |
+-| `TZ_NAME` | `Australia/Melbourne` | Decides what "today" means in the app |
++| `TZ_NAME` | `Australia/Melbourne` | Sets the date and punch-button time; standalone uses the device zone |
+ | `APP_TODAY` | unset | Testing only: pins today's date (`YYYY-MM-DD`) so date-sensitive checks repeat |
+ 
+ ---
+@@ -292,7 +309,7 @@ current year instead of laying down a calendar for 2001.
+ 
+ On startup the app removes calendars nobody used outside that range. That's strictly
+ limited to years holding nothing but weekends, non-working days and public holidays with
+-no times against them — anything you logged is never touched, and a year with real entries
++no times or custom notes against them — anything you logged is never touched, and a year with real entries
+ is always in the picker.
+ 
+ Precedence is **weekend → public holiday → non-working day**, matching the original
+@@ -316,17 +333,24 @@ the exact range and day count before it commits.
+ 
+ ### Public holidays
+ 
+-Public holidays come from the rules that define them (second Monday in March, first
+-Tuesday in November, Easter, the weekend substitute rules), so they're correct for any
+-year with no table to maintain. **Settings › Public holidays** picks the state or
++Public holidays use recurring rules (second Monday in March, first Tuesday in November,
++Easter, weekend substitutes) plus dated exceptions. **Settings › Public holidays** picks the state or
+ territory, and changing it moves the calendar's holidays from today on. Days before
+ today, and anything you've logged, stay as they were. Changing the non-working day
+ moves NW days the same way.
+ 
++Custom notes on non-working days and holidays preserve those records during a calendar
++change. Automatically generated holiday names are recognised as calendar text.
++
+ Every state and territory is checked against the Fair Work Ombudsman's 2026 and 2027
+ lists. Victoria is also checked against Business Victoria's lists for 2025 to 2028, and
+ against the nine holidays in the original FY27 spreadsheet.
+ 
++NSW's extra ANZAC Monday is currently declared for 2026 and 2027; ACT Saturday
++exceptions are recorded for 2020 and 2026. These declarations are not extrapolated
++to every year. Future announcements and older one-off holidays may need updates;
++see the linked sources in `public/core/holidays.js`.
++
+ Some holidays make no difference to work days, so they're left out: evening-only ones
+ (Christmas Eve and New Year's Eve from 6 or 7 pm in Queensland, SA and the NT) and
+ Tasmania's public-service Easter Tuesday. Where holidays differ by region, the capital's
+@@ -447,11 +471,13 @@ scripts/        bump.mjs (versions), test.mjs (test runner), build-standalone.mj
+ | `W` | Weekend | — | — | — |
+ 
+ Each code has a light colour pair (the workbook's fills) and a dark one, in
+-`server/codes.js`. Every pair keeps its text at 4.5:1 or better against its fill.
++`public/core/codes.js`. Every pair keeps its text at 4.5:1 or better against its fill.
+ 
+ ## The maths
+ 
+-Mirrors the workbook exactly, including its two different day counts.
++Each month must meet **both** the days target and the hours target independently.
++Both use Office + Home days. Year totals are an overview: a surplus in one month
++does not satisfy another month's shortfall.
+ 
+ **The monthly row** — this is what the office requirement is measured against:
+ 
+@@ -460,13 +486,32 @@ WORK DAYS      = days coded O or H        (working sick excluded, as in the row
+ OFFICE DAYS    = days coded O
+ % DAYS         = OFFICE DAYS / WORK DAYS
+ REQ DAYS       = WORK DAYS × office requirement (50%)
++WHOLE DAY TARGET = ceil(REQ DAYS)
+ GAP            = REQ DAYS − OFFICE DAYS      (positive = short)
+ 
+ OFFICE HRS     = Σ (OUT − IN) on office days
+ AVAILABLE HRS  = WORK DAYS × standard day (10.75 h)
++REQ HRS        = AVAILABLE HRS × office requirement (50%)
+ % HRS          = OFFICE HRS / AVAILABLE HRS
+ ```
+ 
++For example, 20 work days at 8 standard hours require at least **10 office days
++and 80 office hours**. Ten 6-hour office days meet the days rule but leave a
++20-hour shortfall. Standard day length is configurable; it is not inferred from
++the average length of office visits.
++
++Only days actually coded Office or Home enter the denominator. Fill in all work
++days to obtain a complete monthly result. Leave, holidays, weekends, non-working
++days and Working sick remain excluded, following the existing workbook.
++
++Month/Full year include future plans and label them. Future Office days without
++both times use the standard day as an estimate; past Office days without times
++contribute zero hours and are flagged. Equal In/Out times mean a recorded zero
++hours, not an estimate. The average office day uses completed days only.
++Month to date is empty for a financial year that has not started. An Office day
++in progress joins the to-date hours denominator when both times are recorded;
++the full-month projection already includes it.
++
+ **The key totals** — shown under the grid, counted the way the workbook's key panel counts them:
+ 
+ ```
+diff --git a/docs/REVIEW-2026-10-01.md b/docs/REVIEW-2026-10-01.md
+new file mode 100644
+index 0000000..a5789ad
+--- /dev/null
++++ b/docs/REVIEW-2026-10-01.md
+@@ -0,0 +1,116 @@
++# Office Attendance review and refactor
++
++Date: 1 October 2026 · Local version: 1.12.0
++
++## Confirmed attendance rules
++
++For each calendar month, using the configured standard day length:
++
++- Work days = Office days + Home days.
++- Days target = at least 50% of work days, rounded up to a whole office day.
++- Hours target = at least 50% × work days × standard day length.
++- Actual office hours are the sum of the recorded Office In/Out durations.
++- Both requirements must pass independently. Year totals do not cancel out a
++  shortfall in an individual month.
++
++For 20 work days at 8 hours per day, the targets are 10 office days and 80 office
++hours. Ten 6-hour office visits meet the days target but miss the hours target
++by 20 hours.
++
++The user's final correction supersedes the earlier Office-only hours denominator.
++The final implementation uses Office + Home for actuals and projections. Existing
++leave, Working sick, public holiday, non-working day and weekend exclusions remain.
++Only coded Office/Home days enter the requirement; blank work days must be filled
++in for a complete monthly result.
++
++## Scope and approach
++
++Reviewed the shared calculations, calendar and validation, HTTP/SQLite persistence,
++browser persistence, frontend state and logging flows, summaries, import/export,
++standalone build/service worker, versioning and deployment configuration.
++
++Kept the existing dependency-free architecture and shared service used by both
++editions. Changes target correctness, data preservation and clearer reporting.
++There is no database migration or backup format change.
++
++## Findings addressed
++
++| Priority | Finding | Change |
++| --- | --- | --- |
++| High | Unreadable browser data was silently treated as a new empty history and could be overwritten. | Preserve the stored bytes, stop loading, and offer a raw recovery download. |
++| High | Missing/malformed day records could act as deletes; a malformed replacement backup could erase data. | Validate object shapes and require an explicit code or explicit null clear operation before writing. |
++| High | Restore could write days before failing on settings; calendar updates could be partial. | Wrap complete mutations in transactions, with nested SQLite savepoints and browser rollback. |
++| High | Separate tabs could overwrite newer browser data from stale in-memory copies. | Reload before changes; coordinate service writes and metadata with a shared Web Lock where supported. |
++| High | Rapid edits could read the previous code while a save was pending, losing the new selection. | Snapshot and overlay pending edits immediately; serialize mutations and roll back refused edits. |
++| Medium | Old year responses could repaint the page after newer navigation had begun. | Accept only the latest requested state; refresh after navigation settles. |
++| Medium | Successful saves followed by a refresh failure were reported as failed saves. | Report that the save succeeded and totals could not refresh. |
++| Medium | Custom notes on calendar days could disappear when settings changed or old calendars were tidied. | Include comments in year bookkeeping and preserve annotated records during automatic calendar changes. |
++| Medium | Equal In/Out times could be treated as missing and receive an estimated full day. | Determine completeness from valid times; a complete equal-time pair records zero hours. |
++| Medium | A future FY could show future plans as month-to-date actuals; averages mixed planned and completed times. | Empty future month-to-date actuals and calculate displayed averages from completed days only. |
++| Medium | Punch times used the browser zone while dates used the server zone; repeated taps and midnight could affect the wrong entry. | Use the app zone, check the date at punch time, guard repeated taps and selection changes, and explicitly handle the In shortcut. |
++| Medium | Offline updates could mix files from different releases and delete unrelated origin caches. | Cache a complete release, wait for older tabs to close, and remove only caches belonging to this app's scope. |
++| Medium | An arbitrary build output path could be recursively deleted. | Protect project/source paths and require an empty or builder-marked destination. |
++| Medium | Standalone manifest URLs assumed site-root hosting. | Use relative scope, start URL, icon and shortcut paths. |
++| Medium | NSW/ACT weekend ANZAC exceptions were extrapolated indefinitely. | Use recurring rules plus declared-year exceptions. |
++| Low | Version tests used URL pathnames that became invalid Windows paths. | Use fileURLToPath. |
++| Low | The hours denominator was difficult to see, and fractional day targets obscured the number of visits needed. | Show the hours formula and a whole-day target; label future plans. |
++
++Time validation now has one shared implementation. Startup actions and the timer
++also tolerate a page that has not loaded or has reached the recovery screen.
++
++## Evidence and verification limits
++
++- Initial test run: 97 tests, 93 passed; four version tests failed on Windows paths.
++- An intermediate regression run after the main refactor: 124 tests passed.
++- **The full suite has not been rerun after the final rule correction and subsequent
++  calendar, holiday and browser metadata changes.** The intermediate result is not
++  a claim that the final revision has passed every test.
++- Built the standalone v1.12.0 output successfully into `dist/`.
++- Viewed the updated desktop dashboard using a disposable SQLite preview with
++  its date fixed to 14 October 2026. It showed 5/8 office days (62.5%) and 38/43
++  required office hours, a 5-hour shortfall, with the correct visible denominator.
++- Docker deployment, physical iPhone installation, mobile interaction flows and
++  real browser offline-upgrade behaviour were not exercised in this review.
++- User runtime attendance data was not used for writes. Changes remain local and
++  uncommitted; no push, deployment or publication was performed.
++
++Existing/new regression files cover workbook totals, zero-hour entries, future
++periods, mutation ordering, stale navigation, malformed backups, transaction
++rollback, storage failure, build destination guards and service-worker caching.
++The final revision can be checked with `npm test` (or `node scripts/test.mjs`).
++
++## Remaining operating constraints
++
++- The self-hosted edition relies on a trusted network or authenticating reverse
++  proxy. It has no built-in users/login. Existing published Docker ports bypass
++  proxy authentication, as documented in README.
++- Browser data remains device/origin specific. Web Locks protect writers that use
++  this release in supporting browsers; older browsers have a reload-before-write
++  fallback, not a guarantee against simultaneous tab writes. Keep JSON backups.
++- A raw recovery download preserves corrupt data for repair; it is not necessarily
++  importable. Automatic repair and a dedicated recovery restore workflow are not
++  implemented.
++- Old records do not identify whether PH/NW was assigned manually. Notes matching
++  an exact generated holiday name are treated as automatic calendar text. A
++  custom note or recorded time preserves the record during automatic changes.
++- Calendar fixes do not rewrite historical attendance. Previously generated
++  future calendars can be refreshed through Settings > Fill calendar.
++- Holidays can change by government announcement. AFL dates beyond the confirmed
++  table remain flagged rather than guessed; regional and historical one-off
++  holidays may need manual entries.
++- While an Office day is in progress, the to-date hours card postpones its
++  denominator until both times exist. Full-month plans already include it.
++  Missing past times are zero actual hours and display a warning.
++- An Out time earlier than In remains an overnight duration, with a visible
++  warning. There are no automatic break deductions or partial-day attendance
++  weights; recorded times should represent the hours the user intends to count.
++- Offline updates become active after all old app tabs/windows close. A first
++  offline visit cannot work until a complete build has been cached.
++
++## Holiday sources checked
++
++- [NSW announcement: additional ANZAC public holidays in 2026 and 2027](https://www.nsw.gov.au/ministerial-releases/minns-labor-government-announces-extra-public-holiday-year).
++- [ACT announcement: additional Monday in 2026](https://www.cmtedd.act.gov.au/open_government/inform/act_government_media_releases/barr/2026/act-to-align-with-nsw-on-anzac-day-public-holidays).
++- [ACT Holidays Act 1958, section 3](https://www.legislation.act.gov.au/DownloadFile/a/1958-19/current/PDF/1958-19.PDF): the recurring ANZAC substitute applies on Sundays.
++- [ACT 2020 additional holiday declaration](https://www.legislation.act.gov.au/ni/2019-784/).
++- [ACT published 2026–2029 calendar](https://www.act.gov.au/living-in-the-act/public-holidays-school-terms-and-daylight-saving).
+diff --git a/package.json b/package.json
+index 7ff0111..0aab383 100644
+--- a/package.json
++++ b/package.json
+@@ -1,6 +1,6 @@
+ {
+   "name": "office-attendance",
+-  "version": "1.11.0",
++  "version": "1.12.0",
+   "private": true,
+   "type": "module",
+   "description": "Self-hosted office attendance tracker (days + hours) for an Oct-Sep financial year",
+diff --git a/public/app.js b/public/app.js
+index 5d68f69..cc78940 100644
+--- a/public/app.js
++++ b/public/app.js
+@@ -11,6 +11,6 @@
+  */
+ import { boot } from './js/main.js';
+ 
+-const APP_VERSION = '1.11.0';
++const APP_VERSION = '1.12.0';
+ 
+ boot(APP_VERSION);
+diff --git a/public/core/calc.js b/public/core/calc.js
+index 5cc1783..e69295a 100644
+--- a/public/core/calc.js
++++ b/public/core/calc.js
+@@ -1,10 +1,10 @@
+ import { CODE_MAP } from './codes.js';
+-import { MONTH_NAMES, daysInMonth, iso, fyMonths, minutesBetween } from '../lib/dates.js';
++import { MONTH_NAMES, daysInMonth, iso, fyMonths, minutesBetween, isTime } from '../lib/dates.js';
+ 
+ const round2 = (n) => Math.round(n * 100) / 100;
+ 
+ /**
+- * Roll up one month. Mirrors the FY27 workbook exactly.
++ * Roll up one period. Both targets use Office + Home days; each must be met.
+  *
+  * The monthly row (drives the requirement):
+  *   WORK DAYS = days coded O or H — working sick is excluded, as in the row formula
+@@ -12,6 +12,7 @@ const round2 = (n) => Math.round(n * 100) / 100;
+  *   REQ DAYS = WORK DAYS * officeReqPct
+  *   GAP = REQ - OFFICE   (positive = short of requirement)
+  *   AVAILABLE HRS = WORK DAYS * stdDayHours
++ *   REQ HRS = AVAILABLE HRS * officeReqPct
+  *   OFFICE HRS = sum of (OUT - IN) on office days
+  *
+  * The key totals (a separate count, as in the workbook's key panel):
+@@ -28,6 +29,7 @@ export function summarise(dates, days, settings, todayStr = null) {
+   // Planned: office days still to come (or today, still in progress). Their
+   // entered times are the plan; one without both times counts as a standard day.
+   let plannedOfficeMins = 0, plannedUntimed = 0;
++  let futureWorkDays = 0;
+   let daysWorked = 0, totalWorkDays = 0;
+   const byCode = {};
+   for (const date of dates) {
+@@ -36,16 +38,18 @@ export function summarise(dates, days, settings, todayStr = null) {
+     byCode[rec.code] = (byCode[rec.code] || 0) + 1;
+     const def = CODE_MAP[rec.code];
+     if (!def) continue;
++    const timed = def.office && isTime(rec.in) && isTime(rec.out);
+     const mins = def.office ? minutesBetween(rec.in, rec.out) : 0;
+-    const soFar = !todayStr || date < todayStr || (date === todayStr && (!def.office || mins > 0));
++    const soFar = !todayStr || date < todayStr || (date === todayStr && (!def.office || timed));
+     if (def.workDay) { workDays++; if (soFar) pastWorkDays++; }
++    if (def.workDay && todayStr && date > todayStr) futureWorkDays++;
+     if (def.worked) daysWorked++;
+     if (def.keyWork) totalWorkDays++;
+     if (def.office) {
+       officeDays++;
+-      if (mins > 0) { officeMins += mins; timedOfficeDays++; }
+-      if (soFar) { pastOfficeDays++; if (mins > 0) { pastTimedOfficeDays++; pastOfficeMins += mins; } }
+-      else if (mins > 0 && rec.in && rec.out) plannedOfficeMins += mins;
++      if (timed) { officeMins += mins; timedOfficeDays++; }
++      if (soFar) { pastOfficeDays++; if (timed) { pastTimedOfficeDays++; pastOfficeMins += mins; } }
++      else if (timed) plannedOfficeMins += mins;
+       else plannedUntimed++;
+     }
+   }
+@@ -63,6 +67,7 @@ export function summarise(dates, days, settings, todayStr = null) {
+     workingSickDays: byCode.WS || 0,
+     pctDays: workDays ? officeDays / workDays : null,
+     reqDays: round2(reqDays),
++    requiredOfficeDays: Math.ceil(reqDays),
+     gapDays: round2(reqDays - officeDays),
+     officeHrs: round2(officeHrs),
+     availableHrs: round2(availableHrs),
+@@ -77,7 +82,9 @@ export function summarise(dates, days, settings, todayStr = null) {
+     untimedPastOfficeDays: pastOfficeDays - pastTimedOfficeDays,
+     // Office hours against the target, so far - the number to watch.
+     pastWorkDays,
++    futureWorkDays,
+     pastOfficeHrs: round2(pastOfficeMins / 60),
++    pastAvgHrsPerOfficeDay: pastTimedOfficeDays ? round2(pastOfficeMins / 60 / pastTimedOfficeDays) : null,
+     pastAvailableHrs: round2(pastWorkDays * settings.stdDayHours),
+     pastReqHrs: round2(pastWorkDays * settings.stdDayHours * settings.officeReqPct),
+     pastGapHrs: round2(pastWorkDays * settings.stdDayHours * settings.officeReqPct - pastOfficeMins / 60),
+@@ -85,17 +92,17 @@ export function summarise(dates, days, settings, todayStr = null) {
+     // With plans: everything entered for the period - hours done, plus the
+     // hours planned on days still to come - against the target for all its
+     // work days. What a month will come to if the plan holds.
+-    ...withPlans(pastOfficeMins, plannedOfficeMins, plannedUntimed, workDays, pastWorkDays, settings),
++    ...withPlans(pastOfficeMins, plannedOfficeMins, plannedUntimed, workDays, settings),
++    plannedWorkDays: workDays - pastWorkDays,
+   };
+ }
+ 
+-function withPlans(pastMins, plannedMins, plannedUntimed, workDays, pastWorkDays, settings) {
++function withPlans(pastMins, plannedMins, plannedUntimed, workDays, settings) {
+   const estimated = plannedUntimed * settings.stdDayHours;
+   const projOfficeHrs = pastMins / 60 + plannedMins / 60 + estimated;
+   const available = workDays * settings.stdDayHours;
+   const req = available * settings.officeReqPct;
+   return {
+-    plannedWorkDays: workDays - pastWorkDays,
+     plannedOfficeHrs: round2(plannedMins / 60 + estimated),
+     plannedUntimedOfficeDays: plannedUntimed,
+     projOfficeHrs: round2(projOfficeHrs),
+@@ -124,14 +131,14 @@ export function buildSummary(fy, days, settings, todayStr) {
+     : todayStr > all[all.length - 1] ? 11
+     : 0;
+   const src = months[idx];
+-  const mtdDates = containsToday ? src.dates.filter((d) => d <= todayStr) : src.dates;
++  const mtdDates = src.dates.filter((d) => d <= todayStr);
+   const mtd = {
+     year: src.year,
+     month: src.month,
+     name: src.name,
+     monthIndex: idx,
+     partial: containsToday,
+-    through: mtdDates[mtdDates.length - 1],
++    through: mtdDates.at(-1) || null,
+     ...summarise(mtdDates, days, settings, todayStr),
+   };
+ 
+diff --git a/public/core/calendar.js b/public/core/calendar.js
+index 0f56a5f..4cb9c4f 100644
+--- a/public/core/calendar.js
++++ b/public/core/calendar.js
+@@ -3,15 +3,36 @@
+  * the app goes, and the weekends / public holidays / non-working days that
+  * every year is laid out with before anything is logged.
+  */
+-import { holidaysBetween } from './holidays.js';
++import { holidaysBetween, publicHolidays, STATES } from './holidays.js';
+ import { fyOfDate, fyStart, fyEnd, fyMonths, daysInMonth, iso, weekdayOf, isWeekend, isRealDate, datesBetween } from '../lib/dates.js';
+ 
+-/** Codes the calendar lays down by itself. A year holding only these has nothing logged in it. */
++/** Codes the calendar lays down by itself; times or custom notes still count as logged. */
+ export const SKELETON_CODES = new Set(['W', 'NW', 'PH']);
+ 
+ export const fyBounds = (fy) => [fyStart(fy), fyEnd(fy)];
+ 
+-const isLogged = (r) => !SKELETON_CODES.has(r.code) || r.in_time || r.out_time;
++const holidayNames = new Map();
++function hasCalendarNote(r) {
++  if (!r.comment) return false;
++  if (r.code !== 'PH' || !isRealDate(r.date)) return true;
++  const year = Number(r.date.slice(0, 4));
++  if (!holidayNames.has(year)) {
++    const names = new Map();
++    for (const state of Object.keys(STATES)) {
++      for (const { date, name } of publicHolidays(year, state)) {
++        if (!names.has(date)) names.set(date, new Set());
++        names.get(date).add(name);
++      }
++    }
++    holidayNames.set(year, names);
++  }
++  // Holiday names written by the calendar are automatic; any other text is
++  // a user's note. Check every state so changing states can move old holidays.
++  return !holidayNames.get(year).get(r.date)?.has(r.comment);
++}
++
++export const isLoggedDay = (r) => !!(!SKELETON_CODES.has(r.code)
++  || r.in_time || r.out_time || r.in || r.out || hasCalendarNote(r));
+ 
+ /**
+  * The span of financial years the app works with, worked out afresh on every
+@@ -30,7 +51,7 @@ export function yearSpan(store, settings, today) {
+   const logged = new Set();
+   for (const r of store.getDaySummaries()) {
+     if (!isRealDate(r.date)) continue;
+-    if (isLogged(r)) logged.add(fyOfDate(r.date));
++    if (isLoggedDay(r)) logged.add(fyOfDate(r.date));
+   }
+   const manual = Number.isInteger(settings.lastFy) ? settings.lastFy : 0;
+   const first = Math.min(current, ...logged);
+@@ -104,13 +125,13 @@ export function layCalendar(store, fy, settings, { overwrite = false, reapplyFro
+       if (onlyFrom && date < onlyFrom) continue;
+       const prev = existing[date];
+       const want = skeletonRecord(date, settings, holidays, prev?.code === 'PH' ? null : prev?.comment);
+-      const ours = prev && (prev.code === 'NW' || prev.code === 'PH') && !prev.in && !prev.out;
++      const ours = prev && (prev.code === 'NW' || prev.code === 'PH') && !isLoggedDay({ date, ...prev });
+       const reapply = reapplyFrom && date >= reapplyFrom && ours;
+       if (!want) {
+         if (reapply) { store.upsertDay(date, null); changed++; }
+         continue;
+       }
+-      if (prev && prev.code === want.code) continue;
++      if (prev && prev.code === want.code && !(reapply && prev.comment !== want.comment)) continue;
+       if (prev && !overwrite && !reapply) continue;
+       store.upsertDay(date, want);
+       changed++;
+@@ -144,7 +165,7 @@ export function tidyYears(store, span) {
+   store.transaction(() => {
+     for (const r of store.getDaySummaries()) {
+       if (!isRealDate(r.date)) {
+-        if (!isLogged(r)) { store.upsertDay(r.date, null); removed++; }
++        if (!isLoggedDay(r)) { store.upsertDay(r.date, null); removed++; }
+         continue;
+       }
+       const fy = fyOfDate(r.date);
+@@ -153,7 +174,7 @@ export function tidyYears(store, span) {
+     }
+     for (const [fy, rows] of byFy) {
+       if (fy >= span.current - 1 && fy <= span.last) continue;   // this year, last year, and ahead
+-      if (rows.some(isLogged)) continue;
++      if (rows.some(isLoggedDay)) continue;
+       const [from, to] = fyBounds(fy);
+       store.deleteDaysBetween(from, to);
+       removed += rows.length;
+diff --git a/public/core/holidays.js b/public/core/holidays.js
+index 31321d1..5038f94 100644
+--- a/public/core/holidays.js
++++ b/public/core/holidays.js
+@@ -3,8 +3,8 @@ import { iso, weekdayOf, daysInMonth, addDays, isWeekend } from '../lib/dates.js
+ /**
+  * Australian public holidays, for each state and territory.
+  *
+- * Most are computable from rules that don't change, so this works for any
+- * year. The exception is Victoria's Friday before the AFL Grand Final: the
++ * Most are computable from recurring rules, with dated exceptions kept below.
++ * Victoria's Friday before the AFL Grand Final is announced separately: the
+  * Victorian Government sets it each year once the AFL releases its schedule,
+  * so it can only come from the confirmed table below. A year that isn't in
+  * that table has no Grand Final holiday and is reported as unconfirmed rather
+@@ -116,11 +116,18 @@ const hobartShowThursday = (year) => addDays(nthWeekday(year, 10, 6, 4), -2);
+ 
+ /**
+  * When ANZAC Day falls on a weekend, some places add or move a day to the
+- * Monday: on a Saturday or Sunday in NSW, the ACT and WA; on a Sunday only in
+- * Queensland and the Northern Territory. Victoria, SA and Tasmania keep it
+- * on the day.
++ * Monday: on a Saturday or Sunday in WA; on a Sunday in the ACT, Queensland
++ * and the Northern Territory. Dated declarations below add exceptions.
++ * Victoria, SA and Tasmania keep it on the day.
+  */
+-const ANZAC_MONDAY = { NSW: [6, 0], ACT: [6, 0], WA: [6, 0], QLD: [0], NT: [0], VIC: [], SA: [], TAS: [] };
++const ANZAC_MONDAY = { NSW: [], ACT: [0], WA: [6, 0], QLD: [0], NT: [0], VIC: [], SA: [], TAS: [] };
++
++// NSW's additional holidays are a 2026-2027 trial, not a permanent rule.
++// https://www.nsw.gov.au/ministerial-releases/minns-labor-government-announces-extra-public-holiday-year
++// ACT's Saturday exceptions are declared for 2020 and 2026; Sundays follow the Act.
++// https://www.cmtedd.act.gov.au/open_government/inform/act_government_media_releases/barr/2026/act-to-align-with-nsw-on-anzac-day-public-holidays
++// https://www.legislation.act.gov.au/ni/2019-784/
++const EXTRA_ANZAC_MONDAY = { NSW: [2026, 2027], ACT: [2020, 2026] };
+ 
+ const MON = 1, TUE = 2, WED = 3;
+ 
+@@ -204,7 +211,9 @@ export function publicHolidays(year, state = 'VIC') {
+ 
+   // Substitutes, in calendar order so Christmas claims the earlier weekday.
+   const subs = [[nyd, "New Year's Day"], [aus, 'Australia Day']];
+-  if (ANZAC_MONDAY[state].includes(weekdayOf(anzac))) subs.push([anzac, 'ANZAC Day']);
++  if (ANZAC_MONDAY[state].includes(weekdayOf(anzac)) || EXTRA_ANZAC_MONDAY[state]?.includes(year)) {
++    subs.push([anzac, 'ANZAC Day']);
++  }
+   subs.push([xmas, 'Christmas Day'], [boxing, state === 'SA' ? 'Proclamation Day' : 'Boxing Day']);
+   for (const [date, name] of subs) {
+     if (isWeekend(date)) add(nextFreeWeekday(date, taken), `${name} (substitute)`, true);
+diff --git a/public/core/service.js b/public/core/service.js
+index 5e347a0..583db01 100644
+--- a/public/core/service.js
++++ b/public/core/service.js
+@@ -14,7 +14,7 @@ import { HttpError } from './errors.js';
+ import { buildSummary } from './calc.js';
+ import { CODES } from './codes.js';
+ import { unconfirmedHolidayYears } from './holidays.js';
+-import { asFy, requireDate, parseDay, parseSettings } from './validate.js';
++import { asFy, requireDate, parseDay, parseSettings, requireObject } from './validate.js';
+ import { SKELETON_CODES, fyBounds, yearSpan, availableFys, clearedValueFor, layCalendar, needsCalendar } from './calendar.js';
+ import { toCsv } from './csv.js';
+ import { addDays, isWeekend, fyOfDate } from '../lib/dates.js';
+@@ -102,6 +102,7 @@ export function createService({ store, today, tz = 'Australia/Melbourne', versio
+       return {
+         fy,
+         today: now,
++        tz,
+         todayInFy: now >= from && now <= to,
+         settings,
+         codes: CODES,
+@@ -116,7 +117,7 @@ export function createService({ store, today, tz = 'Australia/Melbourne', versio
+     },
+ 
+     'PUT /api/days': ({ body }) => {
+-      const entries = Object.entries(body.days || {});
++      const entries = Object.entries(requireObject(body.days, 'days'));
+       if (!entries.length) throw new HttpError(400, 'no days supplied');
+       for (const [date] of entries) requireDate(date);
+       return { updated: writeDays(entries, store.getSettings()) };
+@@ -189,7 +190,7 @@ export function createService({ store, today, tz = 'Australia/Melbourne', versio
+      */
+     'POST /api/import': ({ body }) => {
+       const settingsPatch = parseSettings(body.settings);
+-      const all = Object.entries(body.days && typeof body.days === 'object' ? body.days : {});
++      const all = Object.entries(requireObject(body.days, 'backup days'));
+       const entries = all.filter(([date]) => requireDateOrSkip(date));
+       const settings = { ...store.getSettings(), ...settingsPatch };
+       const imported = writeDays(entries, settings, { replace: body.replace === true, strict: false });
+@@ -198,6 +199,16 @@ export function createService({ store, today, tz = 'Australia/Melbourne', versio
+     },
+   };
+ 
++  // Every mutation is atomic, including settings plus calendar changes and
++  // attendance plus settings in a restore. Both stores support nested calls.
++  for (const [key, route] of Object.entries(routes)) {
++    if (key.startsWith('GET ')) continue;
++    routes[key] = (request) => {
++      requireObject(request.body, 'body');
++      return store.transaction(() => route(request));
++    };
++  }
++
+   return {
+     /** The handler for a method and path, or undefined. */
+     route: (method, path) => routes[`${method} ${path}`],
+diff --git a/public/core/validate.js b/public/core/validate.js
+index 4077c22..71b068a 100644
+--- a/public/core/validate.js
++++ b/public/core/validate.js
+@@ -6,18 +6,33 @@
+  */
+ import { HttpError } from './errors.js';
+ import { VALID } from './codes.js';
+-import { isRealDate } from '../lib/dates.js';
++import { isRealDate, isTime } from '../lib/dates.js';
+ import { isSettingKey } from './settings.js';
+ import { STATES } from './holidays.js';
+ 
+ const bad = (msg) => new HttpError(400, msg);
+ 
+-const TIME = /^([01]\d|2[0-3]):[0-5]\d$/;
+-export const isTime = (s) => typeof s === 'string' && TIME.test(s);
++export { isTime };
++
++export function requireObject(value, label) {
++  if (!value || typeof value !== 'object' || Array.isArray(value)) throw bad(`${label} must be a JSON object`);
++  return value;
++}
++
++function numberValue(value, label) {
++  if ((typeof value !== 'number' && typeof value !== 'string') || String(value).trim() === '') {
++    throw bad(`${label} must be a number`);
++  }
++  const n = Number(value);
++  if (!Number.isFinite(n)) throw bad(`${label} must be a number`);
++  return n;
++}
+ 
+ /** A financial year number, or null when the value isn't a whole number. */
+ export function asFy(raw) {
+   if (raw == null || raw === '') return null;
++  if (typeof raw !== 'number' && typeof raw !== 'string') return null;
++  if (String(raw).trim() === '') return null;
+   const n = Number(raw);
+   return Number.isInteger(n) ? n : null;
+ }
+@@ -35,14 +50,19 @@ function optionalTime(v, which) {
+ }
+ 
+ /**
+- * One day's record, ready to store. A missing code means "clear this day",
+- * which is answered by clearedValue - the calendar's own code for that date.
++ * One day's record, ready to store. Null or an explicitly empty code clears it;
++ * a malformed record must never be mistaken for an instruction to delete data.
++ * Clearing uses clearedValue - the calendar's own code for that date.
+  */
+ export function parseDay(rec, date, clearedValue) {
+-  if (rec == null || rec.code == null || rec.code === '') return clearedValue(date);
+-  if (typeof rec !== 'object') throw bad(`bad record for ${date}`);
+-  const code = String(rec.code).toUpperCase();
++  if (rec === null) return clearedValue(date);
++  requireObject(rec, `record for ${date}`);
++  if (!Object.hasOwn(rec, 'code')) throw bad(`missing code for ${date}`);
++  if (rec.code === null || rec.code === '') return clearedValue(date);
++  if (typeof rec.code !== 'string') throw bad(`code for ${date} must be text`);
++  const code = rec.code.toUpperCase();
+   if (!VALID.has(code)) throw bad(`unknown code: ${code}`);
++  if (rec.comment != null && typeof rec.comment !== 'string') throw bad(`comment for ${date} must be text`);
+   return {
+     code,
+     in: optionalTime(rec.in, 'in'),
+@@ -53,28 +73,29 @@ export function parseDay(rec, date, clearedValue) {
+ 
+ const RULES = {
+   stdDayHours: (v) => {
+-    const n = Number(v);
++    const n = numberValue(v, 'standard day');
+     if (v === '' || v == null || !Number.isFinite(n) || n <= 0 || n > 24) throw bad('standard day must be between 0 and 24 hours');
+     return n;
+   },
+   officeReqPct: (v) => {
+-    const n = Number(v);
++    const n = numberValue(v, 'office requirement');
+     if (v === '' || v == null || !Number.isFinite(n) || n < 0 || n > 1) throw bad('office requirement must be between 0% and 100%');
+     return n;
+   },
+   nonWorkingWeekday: (v) => {
+-    const n = Number(v);
++    const n = numberValue(v, 'non-working weekday');
+     if (!Number.isInteger(n) || n < -1 || n > 6) throw bad('non-working weekday must be -1 (none) or 0-6');
+     return n;
+   },
+   lastFy: (v) => {
+     if (v == null) return null;
+-    const n = Number(v);
++    const n = numberValue(v, 'lastFy');
+     if (!Number.isInteger(n) || n < 1 || n > 99) throw bad('lastFy must be a financial year number');
+     return n;
+   },
+   holidayState: (v) => {
+-    const k = String(v ?? '').toUpperCase();
++    if (typeof v !== 'string') throw bad('state must be text');
++    const k = v.toUpperCase();
+     if (!Object.hasOwn(STATES, k)) throw bad(`state must be one of ${Object.keys(STATES).join(', ')}`);
+     return k;
+   },
+@@ -83,9 +104,9 @@ const RULES = {
+ };
+ 
+ /** The recognised settings in body, validated. Unknown keys are ignored. */
+-export function parseSettings(body) {
++export function parseSettings(body = {}) {
+   const patch = {};
+-  if (body == null || typeof body !== 'object') return patch;
++  requireObject(body, 'settings');
+   for (const [k, v] of Object.entries(body)) {
+     if (isSettingKey(k) && Object.hasOwn(RULES, k)) patch[k] = RULES[k](v);
+   }
+diff --git a/public/index.html b/public/index.html
+index 2b95914..3fa787d 100644
+--- a/public/index.html
++++ b/public/index.html
+@@ -292,7 +292,7 @@
+   </div>
+ </dialog>
+ 
+-<dialog id="confirmDlg">
++<dialog id="confirmDlg" aria-labelledby="confirmTitle" aria-describedby="confirmBody">
+   <div class="card-head"><h2 id="confirmTitle">Change the time?</h2></div>
+   <div class="dlg-body">
+     <p id="confirmBody"></p>
+diff --git a/public/js/format.js b/public/js/format.js
+index 1ba07f0..b87a1db 100644
+--- a/public/js/format.js
++++ b/public/js/format.js
+@@ -8,7 +8,9 @@ export const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;',
+ export const longDate = (s) => { const [y, m, d] = parseIso(s); return `${d} ${MONTH_NAMES[m - 1]} ${y}`; };
+ export const shortDate = (s) => { const [y, m, d] = parseIso(s); return `${d} ${MONTH_SHORT[m - 1]} ${y}`; };
+ 
+-export const nowHHMM = () => { const d = new Date(); return `${pad(d.getHours())}:${pad(d.getMinutes())}`; };
++export const nowHHMM = (timeZone, date = new Date()) => new Intl.DateTimeFormat('en-GB', {
++  timeZone: timeZone || undefined, hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
++}).format(date);
+ 
+ /** Hours for prose: trailing zeros dropped, so a figure reads "76 hrs" not "76.00 hrs". */
+ export const fmtHrs = (h) => (Math.round(h * 100) / 100).toLocaleString('en-AU', { maximumFractionDigits: 2 });
+diff --git a/public/js/grid.js b/public/js/grid.js
+index 6634a0f..e66f154 100644
+--- a/public/js/grid.js
++++ b/public/js/grid.js
+@@ -70,9 +70,9 @@ function hourStatCells(m, all) {
+   const hpct = has && m.projPctHrs != null ? `<td class="stat${flag}"${title}>${pct(m.projPctHrs)}%</td>` : dash;
+   const gap = has ? gapCell(m.projGapHrs, m.workDays, fmtHrs2, `${title}`).replace('<td class="stat"', `<td class="stat${flag}"`) : dash;
+   if (!all) return office + hpct + gap;
+-  const avail = `<td class="stat">${has ? fmtHrs2(m.workDays * S.settings.stdDayHours) : '—'}</td>`;
++  const avail = `<td class="stat" title="(Office + Home days) × standard day hours">${has ? fmtHrs2(m.availableHrs) : '—'}</td>`;
+   const reqH = `<td class="stat">${has ? fmtHrs2(m.projReqHrs) : '—'}</td>`;
+-  const avg = `<td class="stat">${m.avgHrsPerOfficeDay == null ? '—' : fmtHrs2(m.avgHrsPerOfficeDay)}</td>`;
++  const avg = `<td class="stat">${m.pastAvgHrsPerOfficeDay == null ? '—' : fmtHrs2(m.pastAvgHrsPerOfficeDay)}</td>`;
+   return office + avail + hpct + reqH + gap + avg + timed;
+ }
+ 
+diff --git a/public/js/log.js b/public/js/log.js
+index c6450d2..80cac1d 100644
+--- a/public/js/log.js
++++ b/public/js/log.js
+@@ -1,12 +1,14 @@
+ /** The "Log a day" card: the selected date, the code chips, times and comment. */
+-import { S, saveDays } from './state.js';
++import { S, saveDays, serverToday, loadState } from './state.js';
+ import { $, longDate, shortDate, nowHHMM, fmtHrs, plural, codeVars } from './format.js';
+ import { askConfirm, flash } from './dialogs.js';
+ import { isTime } from './timefield.js';
+-import { DAY_NAMES, weekdayOf, minutesBetween, isWeekend } from '../lib/dates.js';
++import { DAY_NAMES, weekdayOf, minutesBetween, isWeekend, fyOfDate } from '../lib/dates.js';
+ 
+ /** Codes the calendar puts down by itself - not something you log. */
+ const CALENDAR = new Set(['W', 'NW', 'PH']);
++const clockTime = () => nowHHMM(S.tz);
++let punching = false;
+ 
+ let rerender = () => {};
+ let renderedFor = null;          // the date the fields currently show
+@@ -80,6 +82,7 @@ export function renderLog() {
+  * In gets a nudge, in case it was meant as a daytime time.
+  */
+ function updateHrs() {
++  if (!S.summary || !$('inTime')) return;
+   // Only whole times count - not one still being typed.
+   const valid = (v) => (isTime(v) ? v : '');
+   const inV = valid($('inTime').value), outV = valid($('outTime').value);
+@@ -88,8 +91,8 @@ function updateHrs() {
+   let text = '';
+   if (inV && outV) {
+     text = `${fmtHrs(minutesBetween(inV, outV) / 60)} hrs${overnight ? ' · Out is before In' : ''}`;
+-  } else if (inV && !outV && S.sel === S.today && nowHHMM() > inV) {
+-    const mins = minutesBetween(inV, nowHHMM());
++  } else if (inV && !outV && S.sel === S.today && clockTime() > inV) {
++    const mins = minutesBetween(inV, clockTime());
+     text = `${Math.floor(mins / 60)} h ${mins % 60} m so far`;
+   }
+   el.textContent = text;
+@@ -106,9 +109,9 @@ function punchMode() {
+ }
+ 
+ function updatePunch() {
+-  const mode = punchMode(), now = nowHHMM(), b = $('punchBtn');
++  const mode = punchMode(), now = clockTime(), b = $('punchBtn');
+   const weekend = isWeekend(S.sel);
+-  b.disabled = weekend;
++  b.disabled = weekend || punching;
+   const label = weekend ? 'Weekend' : mode === 'in' ? 'In now' : 'Out now';
+   b.classList.toggle('out', mode === 'out');
+   b.classList.toggle('again', mode === 'again');
+@@ -195,6 +198,7 @@ const shownTime = (t) => t || 'not set';
+ const asking = new Set();          // fields with a question already on screen
+ async function onTimeEdited(which) {
+   if (asking.has(which)) return;    // a second change event for the same edit
++  const date = S.sel;
+   const el = $(which === 'in' ? 'inTime' : 'outTime');
+   const prev = (S.prevTimes || {})[which] || '';
+   const next = el.value;
+@@ -208,6 +212,7 @@ async function onTimeEdited(which) {
+         : `${shortDate(S.sel)} has a recorded ${label} time of ${prev}. Remove it?`,
+       ok: next ? 'Change it' : 'Remove it',
+     }).finally(() => asking.delete(which));
++    if (S.sel !== date) return;
+     if (!ok) { el.value = prev; updateHrs(); return; }
+   }
+   S.prevTimes[which] = next;
+@@ -220,23 +225,43 @@ async function onTimeEdited(which) {
+  * it codes the day O whatever it was before; the confirmation says so, and
+  * Undo puts the day back exactly as it was.
+  */
+-export async function punch() {
++export async function punch(force = null) {
++  if (!S.summary || punching) return;
++  punching = true;
++  updatePunch();
++  try { await punchNow(force); }
++  finally { punching = false; updateHrs(); }
++}
++
++async function punchNow(force) {
++  // Verify the date at the action itself: a tab can stay visible across midnight
++  // without firing a focus/visibility event. Keep deliberately selected past days.
++  try {
++    const selected = S.sel, wasToday = selected === S.today;
++    const today = await serverToday();
++    if (S.sel !== selected) return;
++    if (wasToday && today !== S.today) {
++      S.sel = today; S.anchor = today; S.range = [];
++      if (!(await loadState(fyOfDate(today)))) return;
++    }
++  } catch (e) { flash(e.message, true); return; }
+   if (isWeekend(S.sel)) return weekendRefused();
+-  const which = punchMode() === 'in' ? 'in' : 'out';
++  const date = S.sel;
++  const which = force === 'in' || punchMode() === 'in' ? 'in' : 'out';
+   const field = which === 'in' ? 'inTime' : 'outTime', label = which === 'in' ? 'In' : 'Out';
+-  const now = nowHHMM(), current = $(field).value;
++  const now = clockTime(), current = $(field).value;
+   if (!(await confirmReplace(current, {
+     title: `Change the ${label} time?`,
+     body: `${shortDate(S.sel)} already has an ${label} time of ${current}. Change it to ${now}?`,
+     ok: 'Change it',
+   }))) return;
+-  const date = S.sel;
++  if (S.sel !== date) return;
+   const before = S.days[date] ? { ...S.days[date] } : null;
+   $(field).value = now;
+   S.prevTimes[which] = now;
+   updateHrs();
+   const ok = await saveDays({ [date]: { code: 'O', ...fields() } }, null, { quiet: true });
+-  if (!ok) return;
++  if (!ok || S.sel !== date) return;
+   showPunched(`${label} at ${now}${before?.code === 'O' ? '' : ' · saved as an Office day'}`,
+     () => saveDays({ [date]: before }, 'Put back as it was'));
+ }
+@@ -260,6 +285,7 @@ export function wireLog(ctx) {
+   $('comment').onchange = saveCurrent;
+ 
+   $('stdTimes').onclick = async () => {
++    const date = S.sel;
+     const inV = $('inTime').value, outV = $('outTime').value;
+     const { defaultIn, defaultOut } = S.settings;
+     if (!(await confirmReplace(inV || outV, {
+@@ -267,6 +293,7 @@ export function wireLog(ctx) {
+       body: `${shortDate(S.sel)} is ${shownTime(inV)} to ${shownTime(outV)}. Replace with the standard day, ${defaultIn} to ${defaultOut}?`,
+       ok: 'Replace',
+     }))) return;
++    if (S.sel !== date) return;
+     $('inTime').value = defaultIn;
+     $('outTime').value = defaultOut;
+     updateHrs();
+@@ -279,12 +306,14 @@ export function wireLog(ctx) {
+   setInterval(updateHrs, 20000);
+ 
+   $('clearTimes').onclick = async () => {
++    const date = S.sel;
+     const inV = $('inTime').value, outV = $('outTime').value;
+     if (!(await confirmReplace(inV || outV, {
+       title: 'Clear the times?',
+       body: `${shortDate(S.sel)} is ${shownTime(inV)} to ${shownTime(outV)}. Clearing removes both.`,
+       ok: 'Clear them',
+     }))) return;
++    if (S.sel !== date) return;
+     $('inTime').value = '';
+     $('outTime').value = '';
+     updateHrs();
+diff --git a/public/js/main.js b/public/js/main.js
+index c0c2d7c..138cd73 100644
+--- a/public/js/main.js
++++ b/public/js/main.js
+@@ -64,6 +64,7 @@ function renderAll() {
+  * range to what's already picked.
+  */
+ function selectDate(date, extend = false, toggle = false) {
++  if (!S.summary) return;
+   if (toggle && fyOfDate(date) === S.fy) {
+     const picked = new Set(S.range.length > 1 ? S.range : [S.sel]);
+     if (extend && S.anchor) {
+@@ -135,9 +136,9 @@ function openMonth(idx) {
+  * today if it has changed.
+  */
+ async function catchUpWithToday() {
+-  if (!S.today) return;
++  if (!S.today || anyDialogOpen()) return;
+   const today = await serverToday().catch(() => null);
+-  if (!today || today === S.today) return;
++  if (!today || today === S.today || anyDialogOpen()) return;
+   const wasOnToday = S.sel === S.today;
+   if (wasOnToday) { S.sel = today; S.anchor = today; S.range = []; }
+   await attempt(() => loadState(wasOnToday ? fyOfDate(today) : S.fy));
+@@ -183,7 +184,7 @@ function handleShortcut() {
+   history.replaceState(null, '', location.pathname);
+   setTab('today');
+   if (S.sel !== S.today) selectDate(S.today);
+-  punch();
++  punch('in');
+ }
+ 
+ export async function boot(appVersion) {
+@@ -221,7 +222,7 @@ export async function boot(appVersion) {
+   // open dialog, where it would change the day a question is about.
+   const STEP = { ArrowLeft: -1, ArrowRight: 1, ArrowUp: -7, ArrowDown: 7 };
+   document.addEventListener('keydown', (e) => {
+-    if (!(e.key in STEP) || anyDialogOpen() || e.altKey || e.ctrlKey || e.metaKey) return;
++    if (!S.summary || !(e.key in STEP) || anyDialogOpen() || e.altKey || e.ctrlKey || e.metaKey) return;
+     if (['INPUT', 'SELECT', 'TEXTAREA'].includes(e.target.tagName)) return;
+     e.preventDefault();
+     const vertical = e.key === 'ArrowUp' || e.key === 'ArrowDown';
+@@ -253,6 +254,15 @@ export async function boot(appVersion) {
+     const wrap = document.createElement('div');
+     wrap.className = 'wrap';
+     wrap.append(p);
++    if (runtime.saveRecovery) {
++      const recovery = document.createElement('button');
++      recovery.textContent = 'Download saved data';
++      recovery.onclick = async () => {
++        try { await runtime.saveRecovery(); }
++        catch (error) { p.textContent = error.message; }
++      };
++      wrap.append(recovery);
++    }
+     document.body.replaceChildren(wrap);
+     return;
+   }
+diff --git a/public/js/month.js b/public/js/month.js
+index 14d9921..7c01569 100644
+--- a/public/js/month.js
++++ b/public/js/month.js
+@@ -145,7 +145,7 @@ export function renderMonth() {
+   // hours done plus the times entered on days still to come, with where it
+   // stands today in the note. A month already over is just what happened.
+   const req = S.settings.officeReqPct, std = S.settings.stdDayHours;
+-  const avg = m.avgHrsPerOfficeDay;
++  const avg = m.pastAvgHrsPerOfficeDay;
+   $('mStats').innerHTML = daysStat(m, req, { label: 'Days' }) + hoursStat(m, req, std, { plans: true, label: 'Hours' })
+     + `<p class="mfoot">${avg == null ? '' : `Avg office day ${fmtHrs2(avg)} h · std ${fmtHrs(std)} h`}</p>`;
+   renderSheet();
+diff --git a/public/js/settings.js b/public/js/settings.js
+index 57b9a48..5132451 100644
+--- a/public/js/settings.js
++++ b/public/js/settings.js
+@@ -94,6 +94,7 @@ export function wireSettings() {
+   $('setState').innerHTML = Object.entries(STATES).map(([k, name]) => `<option value="${k}">${name}</option>`).join('');
+ 
+   $('settingsBtn').onclick = () => {
++    if (!S.summary) return;
+     fillForm();
+     $('settingsErr').textContent = '';
+     $('calHint').hidden = true;
+diff --git a/public/js/stat.js b/public/js/stat.js
+index f6e775f..11b5ce8 100644
+--- a/public/js/stat.js
++++ b/public/js/stat.js
+@@ -41,9 +41,10 @@ export function daysStat(s, req, { label = 'Office days' } = {}) {
+   const sg = signed(surplus);
+   return block({
+     label,
++    tag: s.futureWorkDays ? 'incl. plans' : '',
+     value: `${pct(s.pctDays)}<span class="unit">%</span>`,
+     chip: `<span class="chip-delta ${sg.cls}" title="Office days ahead (+) or short (−) of ${Math.round(req * 100)}%">${sg.text} d</span>`,
+-    sub: `${fmtNum(s.officeDays)} of ${fmtNum(s.workDays)} days · target ${fmtNum(s.reqDays)}`,
++    sub: `${fmtNum(s.officeDays)} of ${fmtNum(s.workDays)} days · target ${fmtNum(s.requiredOfficeDays)}`,
+     note: s.workingSickDays ? `${s.workingSickDays} working sick not counted` : '',
+     meter: bar(s.pctDays, req, sg.cls === 'neg' ? 'critical' : 'good'),
+   });
+@@ -58,7 +59,7 @@ export function hoursStat(s, req, std, { plans = false, label = 'Office hours' }
+   const work = plans ? s.workDays : s.pastWorkDays;
+   const hasPlans = plans && s.plannedWorkDays > 0;
+   const tag = hasPlans ? 'incl. plans' : '';
+-  const why = `Office hours ahead (+) or short (−) of ${Math.round(req * 100)}% of a ${fmtHrs(std)} h day, for each work day`
++  const why = `Office hours ahead (+) or short (−) of ${Math.round(req * 100)}% × (Office + Home days) × a ${fmtHrs(std)} h standard day`
+     + (hasPlans ? ', counting the hours planned on days still to come' : ' to date');
+   if (!work) return block({ label, tag, value: '—', sub: 'No work days yet', meter: bar(0, req, 'idle'), title: why });
+   const office = plans ? s.projOfficeHrs : s.pastOfficeHrs;
+@@ -66,6 +67,7 @@ export function hoursStat(s, req, std, { plans = false, label = 'Office hours' }
+   const surplus = -(plans ? s.projGapHrs : s.pastGapHrs);
+   const sg = signed(surplus, fmtHrs2);
+   const notes = [];
++  notes.push(`${Math.round(req * 100)}% × ${work} work ${plural(work, 'day')} × ${fmtHrs(std)} h`);
+   if (hasPlans) notes.push(`${fmtHrs2(s.plannedOfficeHrs)} planned`);
+   if (hasPlans && s.pastWorkDays) notes.push(`so far ${signedHtml(-s.pastGapHrs, fmtHrs2)}`);
+   if (hasPlans && s.plannedUntimedOfficeDays) notes.push(`<span title="Planned office days with no times count as a standard ${fmtHrs(std)} h day">${s.plannedUntimedOfficeDays} est.</span>`);
+@@ -81,14 +83,14 @@ export function hoursStat(s, req, std, { plans = false, label = 'Office hours' }
+ 
+ /** Day length: background information, so no bar and no colour. */
+ export function dayLengthStat(s, std, { label = 'Day length' } = {}) {
+-  const avg = s.avgHrsPerOfficeDay;
++  const avg = s.pastAvgHrsPerOfficeDay;
+   if (avg == null) return block({ label, value: '—', sub: `No office times yet · std ${fmtHrs(std)} h` });
+   const d = signed(avg - std, fmtHrs2);
+   return block({
+     label,
+     value: `${fmtHrs2(avg)}<span class="unit">h</span>`,
+     chip: `<span class="chip-delta zero" title="Against the standard ${fmtHrs(std)} h day">${d.text}</span>`,
+-    sub: `avg of ${s.timedOfficeDays} ${plural(s.timedOfficeDays, 'day')} · std ${fmtHrs(std)} h`,
++    sub: `avg of ${s.pastTimedOfficeDays} completed ${plural(s.pastTimedOfficeDays, 'day')} · std ${fmtHrs(std)} h`,
+   });
+ }
+ 
+diff --git a/public/js/state.js b/public/js/state.js
+index d9d95cc..d2ba5e9 100644
+--- a/public/js/state.js
++++ b/public/js/state.js
+@@ -7,7 +7,7 @@ import { flash } from './dialogs.js';
+ import { fyOfDate, fyStart } from '../lib/dates.js';
+ 
+ export const S = {
+-  fy: null, today: '', todayInFy: false, settings: {}, codes: [], codeMap: {}, days: {}, summary: null,
++  fy: null, today: '', tz: '', todayInFy: false, settings: {}, codes: [], codeMap: {}, days: {}, summary: null,
+   unconfirmed: [], lastFy: null, fys: [], version: null, build: null,
+   sel: null, anchor: null, range: [], period: 'mtd', monthIdx: null,
+ };
+@@ -29,9 +29,10 @@ export const runtime = {
+   beforeLoad: null,       // async, before the first loadState
+   afterLoad: null,        // after the first loadState
+   saveFile: null,         // (path) => save or share an export
++  saveRecovery: null,     // download the original browser data if it cannot be read
+ };
+ 
+-export async function api(path, opts = {}) {
++async function request(path, opts) {
+   if (runtime.transport) return runtime.transport(opts.method || 'GET', path, opts.body ? JSON.parse(opts.body) : {});
+   const res = await fetch(path, { ...opts, headers: { 'content-type': 'application/json', ...opts.headers } });
+   const body = await res.json().catch(() => ({}));
+@@ -39,20 +40,45 @@ export async function api(path, opts = {}) {
+   return body;
+ }
+ 
++let mutations = Promise.resolve();
++export function api(path, opts = {}) {
++  if (['GET', 'HEAD'].includes(opts.method || 'GET')) return request(path, opts);
++  const result = mutations.then(() => request(path, opts));
++  mutations = result.catch(() => {});
++  return result;
++}
++
+ /**
+  * Responses can arrive out of order - a save's refresh still in flight when
+  * you switch year, say. Each state request is numbered, and a response older
+- * than one already applied is dropped rather than painting the wrong year.
++ * than the latest request is dropped rather than painting the wrong year.
+  */
+-let requested = 0, applied = 0;
++let requested = 0, navigation = null;
++let confirmedDays = {};
++const pendingDays = new Map();
++
++function mergeDays(base, changes) {
++  const out = { ...base };
++  for (const [date, rec] of Object.entries(changes)) {
++    if (fyOfDate(date) !== S.fy) continue;
++    if (rec === null) delete out[date];
++    else out[date] = { ...rec };
++  }
++  return out;
++}
++
++function showPendingDays() {
++  S.days = { ...confirmedDays };
++  for (const days of pendingDays.values()) S.days = mergeDays(S.days, days);
++}
+ 
+ function applyState(data, n) {
+-  if (n < applied) return false;
+-  applied = n;
++  if (n !== requested) return false;
+   const yearChanged = data.fy !== S.fy;
+   Object.assign(S, {
+     fy: data.fy,
+     today: data.today,
++    tz: data.tz || '',
+     todayInFy: data.todayInFy,
+     settings: data.settings,
+     codes: data.codes,
+@@ -65,6 +91,8 @@ function applyState(data, n) {
+     version: data.version,
+     build: data.build,
+   });
++  confirmedDays = data.days;
++  showPendingDays();
+   if (!S.todayInFy && S.period === 'ytd') S.period = 'mtd';
+   if (!S.sel || fyOfDate(S.sel) !== S.fy) {
+     S.sel = fyOfDate(S.today) === S.fy ? S.today : fyStart(S.fy);
+@@ -78,12 +106,21 @@ function applyState(data, n) {
+ /** Load a financial year (or the server's default) and select a sensible day in it. */
+ export async function loadState(fy) {
+   const n = ++requested;
+-  const data = await api(`/api/state${fy ? `?fy=${fy}` : ''}`);
+-  if (applyState(data, n)) changed('load');
++  const task = api(`/api/state${fy ? `?fy=${fy}` : ''}`);
++  navigation = task;
++  try {
++    const data = await task;
++    const accepted = applyState(data, n);
++    if (accepted) changed('load');
++    return accepted;
++  } finally {
++    if (navigation === task) navigation = null;
++  }
+ }
+ 
+ /** Re-read the open year after a change, keeping the selection. */
+ export async function refresh() {
++  while (navigation) await navigation.catch(() => {});
+   const n = ++requested;
+   const data = await api(`/api/state?fy=${S.fy}`);
+   if (data.fy !== S.fy) return;          // the year moved on while this was in flight
+@@ -96,21 +133,32 @@ export async function refresh() {
+  * Resolves true when the save went through. `quiet` skips the "Saved" flag,
+  * for callers that confirm the save their own way.
+  */
+-let queue = Promise.resolve();
+-export function saveDays(days, msg, { quiet = false } = {}) {
+-  const run = async () => {
+-    try {
+-      await api('/api/days', { method: 'PUT', body: JSON.stringify({ days }) });
+-      await refresh();
+-      if (!quiet) flash(msg);
+-      return true;
+-    } catch (e) {
+-      flash(e.message, true);
+-      return false;
+-    }
+-  };
+-  queue = queue.then(run, run);
+-  return queue;
++export async function saveDays(days, msg, { quiet = false } = {}) {
++  // Later edits must see earlier pending edits, even before the network replies.
++  // Keep them over refreshes so an older response cannot erase a newer input.
++  const snapshot = JSON.parse(JSON.stringify(days));
++  const token = Symbol();
++  pendingDays.set(token, snapshot);
++  showPendingDays();
++  try {
++    await api('/api/days', { method: 'PUT', body: JSON.stringify({ days: snapshot }) });
++  } catch (e) {
++    pendingDays.delete(token);
++    showPendingDays();
++    changed('refresh');
++    flash(e.message, true);
++    return false;
++  }
++  confirmedDays = mergeDays(confirmedDays, snapshot);
++  pendingDays.delete(token);
++  showPendingDays();
++  try { await refresh(); }
++  catch (e) {
++    flash(`Saved, but the totals could not refresh: ${e.message}`, true);
++    return true;
++  }
++  if (!quiet) flash(msg);
++  return true;
+ }
+ 
+ /** What the server says today is - for noticing that midnight has passed with the page open. */
+diff --git a/public/js/tiles.js b/public/js/tiles.js
+index 5069aff..22bc2f4 100644
+--- a/public/js/tiles.js
++++ b/public/js/tiles.js
+@@ -61,7 +61,7 @@ export function renderTiles() {
+ }
+ 
+ export function wireTiles() {
+-  const choose = (period) => () => { S.period = period; renderTiles(); };
++  const choose = (period) => () => { if (!S.summary) return; S.period = period; renderTiles(); };
+   $('periodYtd').onclick = () => { if (S.todayInFy) choose('ytd')(); };
+   $('periodFull').onclick = choose('full');
+   $('periodMtd').onclick = choose('mtd');
+diff --git a/public/js/timefield.js b/public/js/timefield.js
+index 0be3232..28906dd 100644
+--- a/public/js/timefield.js
++++ b/public/js/timefield.js
+@@ -13,9 +13,9 @@
+  * the same contract <input type="time"> had.
+  */
+ import { flash } from './dialogs.js';
++export { isTime } from '../lib/dates.js';
+ 
+ const pad = (n) => String(n).padStart(2, '0');
+-export const isTime = (s) => /^([01]\d|2[0-3]):[0-5]\d$/.test(s);
+ 
+ /** A typed time as HH:MM, '' for an empty box, or null when it isn't a time. */
+ export function normaliseTime(raw) {
+diff --git a/public/lib/dates.js b/public/lib/dates.js
+index 3d2a6e3..eaf420f 100644
+--- a/public/lib/dates.js
++++ b/public/lib/dates.js
+@@ -18,6 +18,8 @@ export const pad = (n) => String(n).padStart(2, '0');
+ export const iso = (y, m, d) => `${y}-${pad(m)}-${pad(d)}`;
+ export const parseIso = (s) => s.split('-').map(Number);
+ 
++export const isTime = (s) => typeof s === 'string' && /^([01]\d|2[0-3]):[0-5]\d$/.test(s);
++
+ export const daysInMonth = (y, m) => new Date(Date.UTC(y, m, 0)).getUTCDate();
+ 
+ /** True for a date that exists on the calendar - 2027-02-29 and 2026-13-01 do not. */
+@@ -68,7 +70,7 @@ export function datesBetween(from, to) {
+ 
+ /** Minutes between two "HH:MM" times. An out earlier than the in is read as a shift across midnight. */
+ export function minutesBetween(inT, outT) {
+-  if (!inT || !outT) return 0;
++  if (!isTime(inT) || !isTime(outT)) return 0;
+   const [ih, im] = inT.split(':').map(Number);
+   const [oh, om] = outT.split(':').map(Number);
+   let mins = oh * 60 + om - (ih * 60 + im);
+diff --git a/public/local/install.js b/public/local/install.js
+index 7d00c6d..ba1d1c7 100644
+--- a/public/local/install.js
++++ b/public/local/install.js
+@@ -13,7 +13,7 @@ import { STATES } from '../core/holidays.js';
+ import { NEW_PHONE_SETTINGS } from './defaults.js';
+ import { runtime } from '../js/state.js';
+ import { $, plural } from '../js/format.js';
+-import { flash } from '../js/dialogs.js';
++import { flash, attempt } from '../js/dialogs.js';
+ import { pad } from '../lib/dates.js';
+ 
+ /** Stamped by scripts/build-standalone.mjs with the time of the build. */
+@@ -45,6 +45,14 @@ const NEW_PHONE = Object.freeze({ ...NEW_PHONE_SETTINGS, holidayState: guessStat
+ 
+ export function installLocal() {
+   const store = localStore({ defaults: NEW_PHONE });
++  // Every writer, including backup/setup bookkeeping, uses the same tab lock.
++  const access = async (fn) => {
++    const run = () => store.transaction(fn);
++    return navigator.locks ? navigator.locks.request('office-attendance', run) : run();
++  };
++  const saveMeta = (patch) => access(() => {
++    for (const [key, value] of Object.entries(patch)) store.setMeta(key, value);
++  });
+   const service = createService({
+     store,
+     today: localToday,
+@@ -61,29 +69,35 @@ export function installLocal() {
+     const url = new URL(path, 'http://local');
+     const route = service.route(method, url.pathname);
+     if (!route) throw new Error(`no such endpoint: ${method} ${url.pathname}`);
+-    const out = route({ query: url.searchParams, body: body ?? {} });
++    const out = await access(() => {
++      const out = route({ query: url.searchParams, body: body ?? {} });
++      if (method !== 'GET') store.setMeta('lastChange', Date.now());
++      return out;
++    });
+     if (out instanceof Download) return out;
+-    if (method !== 'GET') store.setMeta('lastChange', Date.now());
+     return JSON.parse(JSON.stringify(out));
+   };
+ 
++  runtime.saveRecovery = () => saveOrShare(new Download('application/json',
++    `attendance-recovery-${localToday()}.json`, store.raw() || '{}'));
++
+   runtime.saveFile = async (path) => {
+     const file = await runtime.transport('GET', path, {});
+     const saved = await saveOrShare(file);
+     if (saved && path.startsWith('/api/export.json')) {
+-      store.setMeta('lastBackup', Date.now());
++      await saveMeta({ lastBackup: Date.now() });
+       $('backupNudge').hidden = true;
+       flash('Backup saved');
+     }
+   };
+ 
+   runtime.beforeLoad = async () => {
+-    if (!store.getMeta('setupDone')) await welcome(store);
++    if (!store.getMeta('setupDone')) await welcome(store, saveMeta);
+   };
+ 
+   runtime.afterLoad = () => {
+-    keepData(store);
+-    nudge(store);
++    attempt(() => keepData(saveMeta));
++    attempt(() => nudge(store, saveMeta));
+     registerServiceWorker();
+   };
+ 
+@@ -120,7 +134,7 @@ async function saveOrShare({ type, filename, body }) {
+ 
+ /* ---------- first run ---------- */
+ 
+-function welcome(store) {
++function welcome(store, saveMeta) {
+   const dlg = $('welcomeDlg');
+   const s = store.getSettings();
+   $('wState').innerHTML = Object.entries(STATES).map(([k, name]) => `<option value="${k}">${name}</option>`).join('');
+@@ -133,9 +147,8 @@ function welcome(store) {
+   $('installTip').hidden = matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+ 
+   return new Promise((resolve) => {
+-    const done = () => {
+-      store.setMeta('setupDone', new Date().toISOString());
+-      store.setMeta('firstUse', Date.now());
++    const done = async () => {
++      await saveMeta({ setupDone: new Date().toISOString(), firstUse: Date.now() });
+       dlg.close();
+       resolve();
+     };
+@@ -153,7 +166,7 @@ function welcome(store) {
+           defaultIn: $('wIn').value || NEW_PHONE.defaultIn,
+           defaultOut: $('wOut').value || NEW_PHONE.defaultOut,
+         });
+-        done();
++        await done();
+       } catch (e) {
+         $('welcomeErr').textContent = e.message;
+       }
+@@ -172,8 +185,8 @@ function welcome(store) {
+         const backup = JSON.parse(await f.text());
+         if (!backup || typeof backup.days !== 'object') throw new Error("that file isn't a backup from this app");
+         const r = await runtime.transport('POST', '/api/import', { days: backup.days, settings: backup.settings });
+-        store.setMeta('lastBackup', Date.now());
+-        done();
++        await saveMeta({ lastBackup: Date.now() });
++        await done();
+         flash(`Restored ${r.imported} ${plural(r.imported, 'day')}`);
+       } catch (err) {
+         $('welcomeErr').textContent = `Couldn't restore: ${err.message}`;
+@@ -193,7 +206,7 @@ function welcome(store) {
+  * Asking for persistent storage opts out where the browser allows it. The
+  * outcome is shown in Settings, so it's never a surprise.
+  */
+-async function keepData(store) {
++async function keepData(saveMeta) {
+   let kept = false;
+   try {
+     kept = (await navigator.storage?.persisted?.()) || (await navigator.storage?.persist?.()) || false;
+@@ -206,7 +219,7 @@ async function keepData(store) {
+     : onHome
+       ? 'Your data is kept on this device. Back up now and then: it\'s your only copy if the phone is lost or reset.'
+       : 'The browser may clear your data if you don\'t use the app for a while. Add it to your home screen, and back up now and then.';
+-  store.setMeta('persisted', kept);
++  await saveMeta({ persisted: kept });
+ }
+ 
+ /**
+@@ -214,7 +227,7 @@ async function keepData(store) {
+  * nothing backed up, and a month after the last backup. "Later" puts it off
+  * for a week.
+  */
+-function nudge(store) {
++function nudge(store, saveMeta) {
+   const now = Date.now();
+   const last = store.getMeta('lastBackup');
+   const since = last || store.getMeta('firstUse') || now;
+@@ -226,8 +239,8 @@ function nudge(store) {
+   $('nudgeText').textContent = last
+     ? `Your last backup was ${Math.floor((now - last) / DAY)} days ago. Your attendance is only on this phone, so save a fresh copy.`
+     : "Your attendance is only on this phone. Save a backup so a lost or reset phone doesn't lose it.";
+-  $('nudgeBackup').onclick = () => runtime.saveFile('/api/export.json');
+-  $('nudgeLater').onclick = () => { store.setMeta('nudgeSnoozeUntil', now + 7 * DAY); el.hidden = true; };
++  $('nudgeBackup').onclick = () => attempt(() => runtime.saveFile('/api/export.json'));
++  $('nudgeLater').onclick = () => attempt(async () => { await saveMeta({ nudgeSnoozeUntil: now + 7 * DAY }); el.hidden = true; });
+ }
+ 
+ /* ---------- offline ---------- */
+diff --git a/public/local/store.js b/public/local/store.js
+index fd66ae3..e4e5ec4 100644
+--- a/public/local/store.js
++++ b/public/local/store.js
+@@ -10,79 +10,109 @@
+  * if anything inside throws, so a refused change leaves nothing half-written.
+  */
+ import { DEFAULT_SETTINGS, isSettingKey } from '../core/settings.js';
++import { requireObject } from '../core/validate.js';
++import { isLoggedDay } from '../core/calendar.js';
+ 
+ const EMPTY = () => ({ settings: {}, days: {}, meta: {} });
+ 
+-export function localStore({ key = 'office-attendance', storage = globalThis.localStorage, defaults = {} } = {}) {
+-  let doc = load();
++export function localStore({ key = 'office-attendance', storage, defaults = {} } = {}) {
++  const backing = () => storage ?? globalThis.localStorage;
++  let doc = EMPTY();
++  let lastRaw;
+   let depth = 0;
+ 
+-  function load() {
++  function sync() {
++    if (depth > 0) return;
++    const raw = backing().getItem(key);
++    if (raw === lastRaw) return;
+     try {
+-      const raw = storage.getItem(key);
+-      const parsed = raw ? JSON.parse(raw) : null;
+-      if (parsed && typeof parsed === 'object') return { ...EMPTY(), ...parsed };
+-    } catch { /* unreadable: start empty rather than not at all */ }
+-    return EMPTY();
++      const parsed = raw === null ? EMPTY() : requireObject(JSON.parse(raw), 'saved attendance');
++      const loaded = { ...EMPTY(), ...parsed };
++      for (const k of ['settings', 'days', 'meta']) requireObject(loaded[k], `saved ${k}`);
++      for (const r of Object.values(loaded.days)) requireObject(r, 'saved day');
++      doc = loaded;
++      lastRaw = raw;
++    } catch {
++      throw new Error("Saved attendance couldn't be read. Your original data has been kept; download it before restoring a backup.");
++    }
+   }
+-  function save() {
+-    if (depth > 0) return;
+-    storage.setItem(key, JSON.stringify(doc));
++
++  function transaction(fn) {
++    sync();
++    const snapshot = JSON.stringify(doc);
++    const outer = depth === 0;
++    depth++;
++    try {
++      const out = fn();
++      if (outer) {
++        const next = JSON.stringify(doc);
++        if (next !== lastRaw) {
++          try { backing().setItem(key, next); }
++          catch (e) { throw new Error(`couldn't save on this device: ${e.message}`); }
++          lastRaw = next;
++        }
++      }
++      return out;
++    } catch (e) {
++      doc = JSON.parse(snapshot);
++      throw e;
++    } finally {
++      depth--;
++    }
+   }
++  // Every mutation rolls back if persistence fails, including settings/meta
++  // outside a service call. Existing transactions write only once at the end.
++  const change = (fn) => depth ? fn() : transaction(fn);
+   const sortedDates = () => Object.keys(doc.days).sort();
+ 
+   return {
+     getSettings() {
++      sync();
+       const out = { ...DEFAULT_SETTINGS, ...defaults };
+       for (const [k, v] of Object.entries(doc.settings)) if (isSettingKey(k)) out[k] = v;
+       return out;
+     },
+     setSettings(patch) {
+-      for (const [k, v] of Object.entries(patch)) if (isSettingKey(k)) doc.settings[k] = v;
+-      save();
+-      return this.getSettings();
++      return change(() => {
++        for (const [k, v] of Object.entries(patch)) if (isSettingKey(k)) doc.settings[k] = v;
++        return this.getSettings();
++      });
+     },
+     getDays(from, to) {
++      sync();
+       const out = {};
+       for (const d of sortedDates()) if (d >= from && d <= to) out[d] = { ...doc.days[d] };
+       return out;
+     },
+     getAllDays() {
++      sync();
+       const out = {};
+       for (const d of sortedDates()) out[d] = { ...doc.days[d] };
+       return out;
+     },
+     getDaySummaries() {
+-      return Object.entries(doc.days).map(([date, r]) => ({ date, code: r.code, in_time: r.in, out_time: r.out }));
++      sync();
++      return Object.entries(doc.days).map(([date, r]) => ({ date, code: r.code, in_time: r.in, out_time: r.out, comment: r.comment }));
+     },
+     upsertDay(date, rec) {
+-      if (rec == null || rec.code == null || rec.code === '') delete doc.days[date];
+-      else doc.days[date] = { code: rec.code, in: rec.in || null, out: rec.out || null, comment: rec.comment || null };
+-      save();
++      change(() => {
++        if (rec == null || rec.code == null || rec.code === '') delete doc.days[date];
++        else doc.days[date] = { code: rec.code, in: rec.in || null, out: rec.out || null, comment: rec.comment || null };
++      });
+     },
+     deleteDaysBetween(from, to) {
+-      for (const d of Object.keys(doc.days)) if (d >= from && d <= to) delete doc.days[d];
+-      save();
++      change(() => { for (const d of Object.keys(doc.days)) if (d >= from && d <= to) delete doc.days[d]; });
+     },
+     deleteAllDays() {
+-      doc.days = {};
+-      save();
+-    },
+-    transaction(fn) {
+-      const snapshot = JSON.stringify(doc);
+-      depth++;
+-      let out;
+-      try { out = fn(); } catch (e) { depth--; doc = JSON.parse(snapshot); throw e; }
+-      depth--;
+-      // A write the browser refuses (storage full) must not leave memory ahead of storage.
+-      try { save(); } catch (e) { doc = JSON.parse(snapshot); throw new Error(`couldn't save on this device: ${e.message}`); }
+-      return out;
++      change(() => { doc.days = {}; });
+     },
++    transaction,
+ 
+     /* Beyond the shared interface: small bookkeeping for the standalone app. */
+-    getMeta: (k) => doc.meta[k],
+-    setMeta(k, v) { doc.meta[k] = v; save(); },
++    getMeta(k) { sync(); return doc.meta[k]; },
++    setMeta(k, v) { change(() => { doc.meta[k] = v; }); },
++    raw: () => backing().getItem(key),
+     /** Anything logged at all - a day that isn't just the calendar's. */
+-    hasEntries: () => Object.values(doc.days).some((r) => !['W', 'NW', 'PH'].includes(r.code) || r.in || r.out),
++    hasEntries() { return this.getDaySummaries().some(isLoggedDay); },
+   };
+ }
+diff --git a/scripts/build-standalone.mjs b/scripts/build-standalone.mjs
+index c5194ab..c1982a3 100644
+--- a/scripts/build-standalone.mjs
++++ b/scripts/build-standalone.mjs
+@@ -13,7 +13,7 @@
+  *
+  * No dependencies, and nothing newer than Node 18.
+  */
+-import { readFileSync, writeFileSync, mkdirSync, rmSync, readdirSync, statSync, copyFileSync } from 'node:fs';
++import { readFileSync, writeFileSync, mkdirSync, rmSync, readdirSync, statSync, copyFileSync, existsSync, lstatSync } from 'node:fs';
+ import { join, dirname, relative, resolve, sep } from 'node:path';
+ import { fileURLToPath } from 'node:url';
+ 
+@@ -22,6 +22,20 @@ const PUBLIC = join(ROOT, 'public');
+ const OUT = resolve(ROOT, process.argv[2] || 'dist');
+ const VERSION = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8')).version;
+ const BUILD = Date.now();
++const MARKER = '.attendance-build.json';
++
++// Never allow a build destination to erase the project, a source directory,
++// or an unrelated nonempty folder. Resolve and check before recursive removal.
++const protectedDirs = ['.', 'public', 'server', 'scripts', 'test', 'docs', 'data', '.git', '.agents', '.codex']
++  .map((p) => resolve(ROOT, p));
++const protectedTarget = protectedDirs.some((p) => OUT === p || (p !== resolve(ROOT) && OUT.startsWith(p + sep)))
++  || resolve(ROOT).startsWith(OUT + sep);
++if (protectedTarget || (existsSync(OUT) && lstatSync(OUT).isSymbolicLink())) {
++  throw new Error('Refusing to replace a project/source directory or symbolic link. Use dist or an empty output directory.');
++}
++if (existsSync(OUT) && readdirSync(OUT).length && !existsSync(join(OUT, MARKER))) {
++  throw new Error('Output directory is not empty and was not created by this builder. Choose an empty output directory.');
++}
+ 
+ function walk(dir) {
+   return readdirSync(dir).flatMap((name) => {
+@@ -57,45 +71,24 @@ edit('index.html', [
+ ]);
+ edit('local/install.js', [['const BUILD = 0;', `const BUILD = ${BUILD};`]]);
+ 
+-// Offline: every file of this build, cached on first visit. Pages are fetched
+-// from the network first, so an update arrives on the next launch; the cache
+-// answers when there's no signal. A new build gets a new cache and the old
+-// one is dropped.
+-const files = ['./', ...walk(OUT).map(rel).filter((f) => f !== 'index.html')];
+-writeFileSync(join(OUT, 'sw.js'), `// Generated by scripts/build-standalone.mjs - v${VERSION}, ${new Date(BUILD).toISOString()}
+-const CACHE = 'attendance-${VERSION}-${BUILD}';
+-const FILES = ${JSON.stringify(files)};
+-
+-self.addEventListener('install', (e) => {
+-  e.waitUntil(caches.open(CACHE).then((c) => c.addAll(FILES)).then(() => self.skipWaiting()));
+-});
+-
+-self.addEventListener('activate', (e) => {
+-  e.waitUntil(caches.keys()
+-    .then((keys) => Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k))))
+-    .then(() => self.clients.claim()));
+-});
++const manifestPath = join(OUT, 'manifest.webmanifest');
++const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
++manifest.id = manifest.scope = manifest.start_url = './';
++for (const icon of manifest.icons) icon.src = icon.src.replace(/^\//, '');
++for (const shortcut of manifest.shortcuts) {
++  shortcut.url = `.${shortcut.url}`;
++  for (const icon of shortcut.icons || []) icon.src = icon.src.replace(/^\//, '');
++}
++writeFileSync(manifestPath, JSON.stringify(manifest, null, 2) + '\n');
+ 
+-// Network first, so the newest build is used whenever there's signal; the
+-// cache after a few seconds, or when there's none.
+-self.addEventListener('fetch', (e) => {
+-  const req = e.request;
+-  if (req.method !== 'GET' || new URL(req.url).origin !== self.location.origin) return;
+-  e.respondWith((async () => {
+-    const cached = caches.match(req, { ignoreSearch: true });
+-    const net = fetch(req, { cache: 'no-cache' }).then(async (res) => {
+-      if (res.ok) (await caches.open(CACHE)).put(req, res.clone());
+-      return res;
+-    });
+-    const slow = new Promise((resolve) => setTimeout(resolve, 4000)).then(async () => (await cached) || net);
+-    try {
+-      return await Promise.race([net, slow]);
+-    } catch {
+-      return (await cached) || (req.mode === 'navigate' && (await caches.match('./'))) || Response.error();
+-    }
+-  })());
+-});
+-`);
++// Each worker serves one complete build. Updates wait until older tabs close,
++// so a page cannot mix JavaScript from different releases.
++const files = ['./', ...walk(OUT).map(rel).filter((f) => f !== 'index.html')];
++const worker = readFileSync(join(ROOT, 'scripts/service-worker.template.js'), 'utf8')
++  .replace('__BUILD_ID__', JSON.stringify(`${VERSION}-${BUILD}`))
++  .replace('__FILES__', JSON.stringify(files));
++writeFileSync(join(OUT, 'sw.js'), worker);
++writeFileSync(join(OUT, MARKER), JSON.stringify({ version: VERSION, build: BUILD }));
+ 
+ // Cloudflare Pages reads this for response headers: the same tight policy the
+ // server sends, and no caching of the page or the service worker so an update
+diff --git a/scripts/service-worker.template.js b/scripts/service-worker.template.js
+new file mode 100644
+index 0000000..f8bd031
+--- /dev/null
++++ b/scripts/service-worker.template.js
+@@ -0,0 +1,31 @@
++// Generated with one complete set of assets per build.
++const PREFIX = `attendance:${self.registration.scope}:`;
++const CACHE = PREFIX + __BUILD_ID__;
++const FILES = __FILES__;
++
++self.addEventListener('install', (event) => {
++  event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(
++    FILES.map((file) => new Request(new URL(file, self.registration.scope), { cache: 'reload' })),
++  )));
++});
++
++self.addEventListener('activate', (event) => {
++  event.waitUntil(caches.keys()
++    .then((keys) => Promise.all(keys.filter((key) => key.startsWith(PREFIX) && key !== CACHE).map((key) => caches.delete(key))))
++    .then(() => self.clients.claim()));
++});
++
++self.addEventListener('fetch', (event) => {
++  const req = event.request;
++  const url = new URL(req.url);
++  const scope = new URL(self.registration.scope);
++  if (req.method !== 'GET' || url.origin !== scope.origin || !url.pathname.startsWith(scope.pathname)) return;
++  event.respondWith((async () => {
++    const cache = await caches.open(CACHE);
++    const key = req.mode === 'navigate' ? new URL('./', scope).href : req;
++    const cached = await cache.match(key, { ignoreSearch: true });
++    if (cached) return cached;
++    try { return await fetch(req); }
++    catch { return Response.error(); }
++  })());
++});
+diff --git a/server/db.js b/server/db.js
+index ff10a2e..c512c88 100644
+--- a/server/db.js
++++ b/server/db.js
+@@ -45,14 +45,17 @@ function stmt(db, sql) {
+ }
+ 
+ /** Run fn inside one transaction, rolling back if it throws. */
++let savepointId = 0;
+ export function transaction(db, fn) {
+-  db.exec('BEGIN');
++  const name = `attendance_${++savepointId}`;
++  db.exec(`SAVEPOINT ${name}`);
+   try {
+     const out = fn();
+-    db.exec('COMMIT');
++    db.exec(`RELEASE SAVEPOINT ${name}`);
+     return out;
+   } catch (e) {
+-    db.exec('ROLLBACK');
++    db.exec(`ROLLBACK TO SAVEPOINT ${name}`);
++    db.exec(`RELEASE SAVEPOINT ${name}`);
+     throw e;
+   }
+ }
+@@ -93,7 +96,7 @@ export function getAllDays(db) {
+ }
+ 
+ /** Just the columns the year bookkeeping needs, for every stored day. */
+-export const getDaySummaries = (db) => stmt(db, 'SELECT date, code, in_time, out_time FROM days').all();
++export const getDaySummaries = (db) => stmt(db, 'SELECT date, code, in_time, out_time, comment FROM days').all();
+ 
+ /** Write one day, or delete it when rec is null or has no code. */
+ export function upsertDay(db, date, rec) {
+diff --git a/test/calc.test.js b/test/calc.test.js
+index d1a809b..f33cc72 100644
+--- a/test/calc.test.js
++++ b/test/calc.test.js
+@@ -20,7 +20,7 @@ test('every FY27 month matches the spreadsheet, counted cell by cell', () => {
+   }
+ });
+ 
+-test('FY27 totals: 139 work days, 71 office, 51.1%, 76 office hours, 1,494.25 available', () => {
++test('FY27 totals: 139 work days, 71 office, 51.1%, 76 office hours, 1,494.25 available hours', () => {
+   const { total } = buildSummary(27, seed, settings, '2026-09-29');
+   assert.equal(total.workDays, 139);
+   assert.equal(total.officeDays, 71);
+@@ -86,8 +86,8 @@ test('office hours against the target, so far: past days, and today once it is s
+   const s = summarise(dates, days, std, '2026-10-14');
+   assert.equal(s.pastWorkDays, 2);
+   assert.equal(s.pastOfficeHrs, 9);
+-  assert.equal(s.pastReqHrs, 8);                              // 2 days x 8 h x 50%
+-  assert.equal(s.pastGapHrs, -1);                             // 1 h ahead
++  assert.equal(s.pastReqHrs, 8);                              // 2 work days x 8 h x 50%
++  assert.equal(s.pastGapHrs, -1);
+   assert.equal(s.untimedPastOfficeDays, 0, 'today in progress is not flagged as missing times');
+   // once today's Out is in, it counts
+   days['2026-10-14'].out = '12:00';
+@@ -98,7 +98,8 @@ test('office hours against the target, so far: past days, and today once it is s
+   // a home day today counts straight away
+   const h = summarise(['2026-10-15'], { '2026-10-15': { code: 'H' } }, std, '2026-10-15');
+   assert.equal(h.pastWorkDays, 1);
+-  assert.equal(h.pastGapHrs, 4);
++  assert.equal(h.pastGapHrs, 4, 'home days contribute to the hours target');
++  assert.equal(h.pastPctHrs, 0);
+ });
+ 
+ test('with plans: hours done plus hours planned ahead, against the target for every work day', () => {
+@@ -118,9 +119,56 @@ test('with plans: hours done plus hours planned ahead, against the target for ev
+   assert.equal(s.plannedOfficeHrs, 22);                        // 6 + 8 + 8
+   assert.equal(s.projOfficeHrs, 31);
+   assert.equal(s.projReqHrs, 24);                              // 6 work days x 8 h x 50%
+-  assert.equal(s.projGapHrs, -7);                              // 7 h ahead if the plan holds
++  assert.equal(s.projGapHrs, -7);
+   // a month entirely in the past: with plans is just the actual
+   const past = summarise(Object.keys(days), days, std, '2026-11-30');
+   assert.equal(past.plannedWorkDays, 0);
+   assert.equal(past.projGapHrs, past.pastGapHrs);
+ });
++
++test('days and hours must each meet 50% of Office + Home days, using the standard day for hours', () => {
++  const days = { '2026-10-06': { code: 'O', in: '09:00', out: '14:00' } };
++  const std = { ...settings, stdDayHours: 10 };
++  const before = summarise(Object.keys(days), days, std, '2026-10-31');
++  days['2026-10-07'] = { code: 'H' };
++  days['2026-10-08'] = { code: 'H' };
++  const after = summarise(Object.keys(days), days, std, '2026-10-31');
++  assert.equal(before.pctDays, 1);
++  assert.equal(after.pctDays, 1 / 3);
++  assert.equal(after.requiredOfficeDays, 2, 'fractional day targets require a whole office day');
++  assert.equal(before.pctHrs, 0.5);
++  assert.equal(before.reqHrs, 5);
++  assert.equal(before.gapHrs, 0);
++  assert.equal(after.pctHrs, 5 / 30);
++  assert.equal(after.reqHrs, 15);
++  assert.equal(after.pastReqHrs, 15);
++  assert.equal(after.projReqHrs, 15);
++  days['2026-10-06'].out = '13:00';
++  delete days['2026-10-08'];
++  const short = summarise(Object.keys(days), days, std, '2026-10-31');
++  assert.equal(short.pctDays, 0.5);
++  assert.equal(short.pctHrs, 0.2, 'meeting the days target does not imply meeting hours');
++  assert.equal(short.gapHrs, 6);
++});
++
++test('a recorded zero-hour office day is complete, never estimated as a full day', () => {
++  const days = { '2026-10-14': { code: 'O', in: '09:00', out: '09:00' } };
++  for (const today of ['2026-10-13', '2026-10-14', '2026-10-15']) {
++    const s = summarise(Object.keys(days), days, settings, today);
++    assert.equal(s.projOfficeHrs, 0);
++    assert.equal(s.timedOfficeDays, 1);
++    assert.equal(s.plannedUntimedOfficeDays, 0);
++    assert.equal(s.untimedPastOfficeDays, 0);
++    if (today >= '2026-10-14') assert.equal(s.pastOfficeDays, 1);
++  }
++});
++
++test('future years have no month-to-date attendance; planned times do not enter the actual average', () => {
++  const summary = buildSummary(27, seed, settings, '2026-09-29');
++  assert.equal(summary.mtd.workDays, 0);
++  assert.equal(summary.mtd.officeHrs, 0);
++  assert.equal(summary.mtd.through, null);
++  assert.equal(summary.total.pastAvgHrsPerOfficeDay, null);
++  assert.equal(summary.ytd.workDays, 0);
++  assert.ok(summary.months[0].plannedOfficeHrs > 0);
++});
+diff --git a/test/fixtures/fy27-workbook.json b/test/fixtures/fy27-workbook.json
+index 36860a1..20ec8be 100644
+--- a/test/fixtures/fy27-workbook.json
++++ b/test/fixtures/fy27-workbook.json
+@@ -1,91 +1,91 @@
+-{
+-  "source": "FY27_Office_Attendance__Kais_OWN.xlsx, sheets DAYS and HOURS, counted cell by cell (not from the sheet's own formulas, which miss day 31 in four months)",
+-  "stdDayHours": 10.75,
+-  "officeReqPct": 0.5,
+-  "months": [
+-    {
+-      "name": "October",
+-      "year": 2026,
+-      "workDays": 18,
+-      "officeDays": 9,
+-      "officeHrs": 76.0
+-    },
+-    {
+-      "name": "November",
+-      "year": 2026,
+-      "workDays": 14,
+-      "officeDays": 7,
+-      "officeHrs": 0.0
+-    },
+-    {
+-      "name": "December",
+-      "year": 2026,
+-      "workDays": 13,
+-      "officeDays": 7,
+-      "officeHrs": 0.0
+-    },
+-    {
+-      "name": "January",
+-      "year": 2027,
+-      "workDays": 11,
+-      "officeDays": 6,
+-      "officeHrs": 0.0
+-    },
+-    {
+-      "name": "February",
+-      "year": 2027,
+-      "workDays": 16,
+-      "officeDays": 8,
+-      "officeHrs": 0.0
+-    },
+-    {
+-      "name": "March",
+-      "year": 2027,
+-      "workDays": 17,
+-      "officeDays": 9,
+-      "officeHrs": 0.0
+-    },
+-    {
+-      "name": "April",
+-      "year": 2027,
+-      "workDays": 2,
+-      "officeDays": 1,
+-      "officeHrs": 0.0
+-    },
+-    {
+-      "name": "May",
+-      "year": 2027,
+-      "workDays": 8,
+-      "officeDays": 4,
+-      "officeHrs": 0.0
+-    },
+-    {
+-      "name": "June",
+-      "year": 2027,
+-      "workDays": 18,
+-      "officeDays": 9,
+-      "officeHrs": 0.0
+-    },
+-    {
+-      "name": "July",
+-      "year": 2027,
+-      "workDays": 18,
+-      "officeDays": 9,
+-      "officeHrs": 0.0
+-    },
+-    {
+-      "name": "August",
+-      "year": 2027,
+-      "workDays": 4,
+-      "officeDays": 2,
+-      "officeHrs": 0.0
+-    },
+-    {
+-      "name": "September",
+-      "year": 2027,
+-      "workDays": 0,
+-      "officeDays": 0,
+-      "officeHrs": 0.0
+-    }
+-  ]
++{
++  "source": "FY27_Office_Attendance__Kais_OWN.xlsx, sheets DAYS and HOURS, counted cell by cell (not from the sheet's own formulas, which miss day 31 in four months)",
++  "stdDayHours": 10.75,
++  "officeReqPct": 0.5,
++  "months": [
++    {
++      "name": "October",
++      "year": 2026,
++      "workDays": 18,
++      "officeDays": 9,
++      "officeHrs": 76.0
++    },
++    {
++      "name": "November",
++      "year": 2026,
++      "workDays": 14,
++      "officeDays": 7,
++      "officeHrs": 0.0
++    },
++    {
++      "name": "December",
++      "year": 2026,
++      "workDays": 13,
++      "officeDays": 7,
++      "officeHrs": 0.0
++    },
++    {
++      "name": "January",
++      "year": 2027,
++      "workDays": 11,
++      "officeDays": 6,
++      "officeHrs": 0.0
++    },
++    {
++      "name": "February",
++      "year": 2027,
++      "workDays": 16,
++      "officeDays": 8,
++      "officeHrs": 0.0
++    },
++    {
++      "name": "March",
++      "year": 2027,
++      "workDays": 17,
++      "officeDays": 9,
++      "officeHrs": 0.0
++    },
++    {
++      "name": "April",
++      "year": 2027,
++      "workDays": 2,
++      "officeDays": 1,
++      "officeHrs": 0.0
++    },
++    {
++      "name": "May",
++      "year": 2027,
++      "workDays": 8,
++      "officeDays": 4,
++      "officeHrs": 0.0
++    },
++    {
++      "name": "June",
++      "year": 2027,
++      "workDays": 18,
++      "officeDays": 9,
++      "officeHrs": 0.0
++    },
++    {
++      "name": "July",
++      "year": 2027,
++      "workDays": 18,
++      "officeDays": 9,
++      "officeHrs": 0.0
++    },
++    {
++      "name": "August",
++      "year": 2027,
++      "workDays": 4,
++      "officeDays": 2,
++      "officeHrs": 0.0
++    },
++    {
++      "name": "September",
++      "year": 2027,
++      "workDays": 0,
++      "officeDays": 0,
++      "officeHrs": 0.0
++    }
++  ]
+ }
+\ No newline at end of file
+diff --git a/test/offline.test.js b/test/offline.test.js
+new file mode 100644
+index 0000000..e1f2759
+--- /dev/null
++++ b/test/offline.test.js
+@@ -0,0 +1,75 @@
++import { test } from 'node:test';
++import assert from 'node:assert/strict';
++import { readFileSync, mkdtempSync, writeFileSync, rmSync } from 'node:fs';
++import { join } from 'node:path';
++import { tmpdir } from 'node:os';
++import { fileURLToPath } from 'node:url';
++import { execFileSync } from 'node:child_process';
++import { runInNewContext } from 'node:vm';
++
++const builder = fileURLToPath(new URL('../scripts/build-standalone.mjs', import.meta.url));
++
++test('build refuses an unrelated nonempty output directory without deleting any file', () => {
++  const dir = mkdtempSync(join(tmpdir(), 'attendance-build-guard-'));
++  try {
++    writeFileSync(join(dir, 'keep.txt'), 'existing work');
++    assert.throws(() => execFileSync(process.execPath, [builder, dir], { stdio: 'pipe' }), /not empty/);
++    assert.equal(readFileSync(join(dir, 'keep.txt'), 'utf8'), 'existing work');
++    for (const path of ['.', 'public', '.git', 'server']) {
++      assert.throws(() => execFileSync(process.execPath, [builder, path], { stdio: 'pipe' }), /Refusing/);
++    }
++  } finally { rmSync(dir, { recursive: true, force: true }); }
++});
++
++test('a standalone build can be rebuilt and its manifest works under a subdirectory', () => {
++  const dir = mkdtempSync(join(tmpdir(), 'attendance-rebuild-'));
++  try {
++    for (let i = 0; i < 2; i++) execFileSync(process.execPath, [builder, dir], { stdio: 'pipe' });
++    const manifest = JSON.parse(readFileSync(join(dir, 'manifest.webmanifest'), 'utf8'));
++    assert.equal(manifest.scope, './');
++    assert.equal(manifest.start_url, './');
++    assert.equal(manifest.shortcuts[0].url, './?punch=in');
++    for (const icon of manifest.icons) assert.ok(!icon.src.startsWith('/'));
++  } finally { rmSync(dir, { recursive: true, force: true }); }
++});
++
++test('offline worker keeps a complete build, preserves other apps’ caches and serves query URLs offline', async () => {
++  const scope = 'https://example.test/attendance/';
++  const prefix = `attendance:${scope}:`;
++  const handlers = {}, deleted = [], fetched = [], precached = [];
++  const cache = {
++    addAll: async (files) => { precached.push(...files); },
++    match: async (request) => {
++      const url = typeof request === 'string' ? request : request.url;
++      return url === scope ? 'this build’s page' : url === `${scope}app.js` ? 'this build’s code' : undefined;
++    },
++  };
++  const source = readFileSync(new URL('../scripts/service-worker.template.js', import.meta.url), 'utf8')
++    .replace('__BUILD_ID__', '"new"').replace('__FILES__', '["./", "app.js"]');
++  runInNewContext(source, {
++    URL, Request, Response,
++    self: { registration: { scope }, clients: { claim() {} }, addEventListener: (event, fn) => { handlers[event] = fn; } },
++    caches: {
++      open: async (name) => { assert.equal(name, `${prefix}new`); return cache; },
++      keys: async () => [`${prefix}old`, `${prefix}new`, 'unrelated-app', 'attendance:https://example.test/other/:old'],
++      delete: async (key) => { deleted.push(key); },
++    },
++    fetch: async (req) => { fetched.push(req.url); throw new Error('offline'); },
++  });
++  let work;
++  handlers.install({ waitUntil: (promise) => { work = promise; } });
++  await work;
++  assert.deepEqual(precached.map((r) => r.url), [scope, `${scope}app.js`]);
++  assert.ok(precached.every((r) => r.cache === 'reload'));
++  handlers.activate({ waitUntil: (promise) => { work = promise; } });
++  await work;
++  assert.deepEqual(deleted, [`${prefix}old`]);
++  for (const [url, mode, expected] of [
++    [`${scope}?punch=in`, 'navigate', 'this build’s page'],
++    [`${scope}app.js`, 'cors', 'this build’s code'],
++  ]) {
++    handlers.fetch({ request: { method: 'GET', url, mode }, respondWith: (promise) => { work = promise; } });
++    assert.equal(await work, expected);
++  }
++  assert.deepEqual(fetched, [], 'cached code cannot be mixed with a newer network release');
++});
+diff --git a/test/service.test.js b/test/service.test.js
+new file mode 100644
+index 0000000..c58af97
+--- /dev/null
++++ b/test/service.test.js
+@@ -0,0 +1,62 @@
++import { test } from 'node:test';
++import assert from 'node:assert/strict';
++import { createService } from '../public/core/service.js';
++import { localStore } from '../public/local/store.js';
++import { openDb, sqliteStore } from '../server/db.js';
++
++const factories = {
++  SQLite(t) { const db = openDb(':memory:'); t.after(() => db.close()); return sqliteStore(db); },
++  browser() {
++    let raw = null;
++    return localStore({ storage: { getItem: () => raw, setItem: (_key, value) => { raw = value; } } });
++  },
++};
++
++for (const [name, factory] of Object.entries(factories)) {
++  test(`${name}: malformed records and restore containers cannot clear existing attendance`, (t) => {
++    const store = factory(t);
++    const service = createService({ store, today: () => '2026-10-14' });
++    const call = (method, path, body) => service.route(method, path)({ body });
++    store.upsertDay('2026-10-14', { code: 'O', in: '09:00', out: '17:00' });
++    const original = store.getAllDays();
++    for (const rec of [1, false, 'O', [], {}, { in: '09:00' }, { code: ['O'] }, { code: 'O', comment: {} }]) {
++      assert.throws(() => call('PUT', '/api/days', { days: { '2026-10-14': rec } }), { status: 400 });
++      assert.deepEqual(store.getAllDays(), original);
++    }
++    for (const days of [undefined, null, 1, false, [], 'oops']) {
++      assert.throws(() => call('POST', '/api/import', { days, replace: true }), { status: 400 });
++      assert.deepEqual(store.getAllDays(), original);
++    }
++    for (const value of [true, false, [], [8], {}, null, '  ']) {
++      for (const key of ['stdDayHours', 'officeReqPct', 'nonWorkingWeekday']) {
++        assert.throws(() => call('PUT', '/api/settings', { [key]: value }), { status: 400 });
++      }
++    }
++  });
++
++  test(`${name}: restore rolls back days and settings together after a storage failure`, (t) => {
++    const store = factory(t);
++    store.upsertDay('2026-10-14', { code: 'H' });
++    const days = store.getAllDays(), settings = store.getSettings();
++    const setSettings = store.setSettings.bind(store);
++    store.setSettings = (patch) => { setSettings(patch); throw new Error('simulated storage failure'); };
++    const service = createService({ store, today: () => '2026-10-14' });
++    assert.throws(() => service.route('POST', '/api/import')({ body: {
++      replace: true, settings: { stdDayHours: 8 }, days: { '2026-10-15': { code: 'O' } },
++    } }), /simulated storage failure/);
++    assert.deepEqual(store.getAllDays(), days);
++    assert.deepEqual(store.getSettings(), settings);
++  });
++
++  test(`${name}: changing the working pattern rolls back the calendar and settings together`, (t) => {
++    const store = factory(t);
++    const service = createService({ store, today: () => '2026-10-14' });
++    service.route('GET', '/api/state')({ query: new URLSearchParams('fy=27') });
++    const days = store.getAllDays(), settings = store.getSettings();
++    const upsert = store.upsertDay.bind(store);
++    store.upsertDay = (date, rec) => { upsert(date, rec); throw new Error('calendar write failed'); };
++    assert.throws(() => service.route('PUT', '/api/settings')({ body: { nonWorkingWeekday: 2 } }), /calendar write failed/);
++    assert.deepEqual(store.getAllDays(), days);
++    assert.deepEqual(store.getSettings(), settings);
++  });
++}
+diff --git a/test/standalone.test.js b/test/standalone.test.js
+index 194eba3..47bc4f1 100644
+--- a/test/standalone.test.js
++++ b/test/standalone.test.js
+@@ -88,11 +88,45 @@ test('exports come back as files, and a backup restores onto another phone', ()
+   assert.equal(b.store.getSettings().holidayState, 'NSW');
+ });
+ 
+-test('storage that holds rubbish starts afresh rather than failing', () => {
++test('unreadable storage is preserved instead of being overwritten with an empty calendar', () => {
+   const storage = memoryStorage();
+   storage.raw.set('office-attendance', '{not json');
+   const { call } = phone(storage);
+-  assert.equal(call('GET', '/api/state').settings.holidayState, 'NSW');
++  assert.throws(() => call('GET', '/api/state'), /original data has been kept/);
++  assert.equal(storage.raw.get('office-attendance'), '{not json');
++});
++
++test('two open stores preserve each other’s changes and settings', () => {
++  const storage = memoryStorage();
++  const a = phone(storage), b = phone(storage);
++  a.store.getAllDays(); b.store.getAllDays();
++  a.call('PUT', '/api/days', { days: { '2026-10-14': { code: 'O' } } });
++  b.call('PUT', '/api/days', { days: { '2026-10-15': { code: 'H' } } });
++  a.call('PUT', '/api/settings', { stdDayHours: 8 });
++  b.store.setMeta('lastBackup', 123);
++  assert.equal(b.store.getAllDays()['2026-10-14'].code, 'O');
++  assert.equal(a.store.getAllDays()['2026-10-15'].code, 'H');
++  assert.equal(b.store.getSettings().stdDayHours, 8);
++  assert.equal(a.store.getMeta('lastBackup'), 123);
++});
++
++test('failed direct settings and metadata writes do not change memory or stored data', () => {
++  const storage = memoryStorage({ failWrites: true });
++  const { store } = phone(storage);
++  assert.throws(() => store.setSettings({ stdDayHours: 3 }), /couldn't save/);
++  assert.equal(store.getSettings().stdDayHours, NEW_PHONE.stdDayHours);
++  assert.throws(() => store.setMeta('lastBackup', 123), /couldn't save/);
++  assert.equal(store.getMeta('lastBackup'), undefined);
++  assert.equal(storage.raw.size, 0);
++});
++
++test('null and array storage containers cannot be treated as a new attendance file', () => {
++  for (const raw of ['null', '[]', '{"days":null}', '{"settings":[]}', '{"days":{"2026-10-14":null}}']) {
++    const storage = memoryStorage();
++    storage.raw.set('office-attendance', raw);
++    assert.throws(() => phone(storage).call('GET', '/api/state'), /original data has been kept/);
++    assert.equal(storage.raw.get('office-attendance'), raw);
++  }
+ });
+ 
+ test('hasEntries: the calendar alone is not an entry', () => {
+diff --git a/test/state.test.js b/test/state.test.js
+new file mode 100644
+index 0000000..512c02e
+--- /dev/null
++++ b/test/state.test.js
+@@ -0,0 +1,102 @@
++import { test, after } from 'node:test';
++import assert from 'node:assert/strict';
++import { nowHHMM } from '../public/js/format.js';
++
++const flags = new Map(['savedFlag', 'errFlag'].map((id) => [id, {
++  textContent: '', classList: { add() {}, remove() {} },
++}]));
++const originalDocument = globalThis.document;
++globalThis.document = { getElementById: (id) => flags.get(id) };
++after(() => { globalThis.document = originalDocument; });
++let instance = 0;
++const fresh = () => import(`../public/js/state.js?test=${++instance}`);
++const deferred = () => {
++  let resolve, reject;
++  const promise = new Promise((yes, no) => { resolve = yes; reject = no; });
++  return { promise, resolve, reject };
++};
++const tick = () => new Promise((resolve) => setImmediate(resolve));
++const date = '2026-10-14';
++const state = (fy = 27, days = {}) => ({
++  fy, today: date, todayInFy: fy === 27, tz: 'Australia/Melbourne', settings: {},
++  codes: [], days, summary: {}, lastFy: 28, availableFys: [27, 28],
++});
++
++test('rapid code and time edits see pending values and are sent in order', async () => {
++  const app = await fresh();
++  const gate = deferred();
++  const sent = [];
++  let stored = { [date]: { code: 'H' } };
++  app.runtime.transport = async (method, _path, body) => {
++    if (method === 'GET') return state(27, structuredClone(stored));
++    sent.push(structuredClone(body.days));
++    if (sent.length === 1) await gate.promise;
++    stored = { ...stored, ...body.days };
++    return { updated: 1 };
++  };
++  await app.loadState(27);
++  const first = app.saveDays({ [date]: { code: 'O' } });
++  assert.equal(app.S.days[date].code, 'O');
++  const second = app.saveDays({ [date]: { ...app.S.days[date], in: '09:00', out: '15:00' } });
++  await tick();
++  assert.equal(sent.length, 1, 'second write waits for first');
++  gate.resolve();
++  assert.deepEqual(await Promise.all([first, second]), [true, true]);
++  assert.deepEqual(stored[date], { code: 'O', in: '09:00', out: '15:00' });
++  assert.deepEqual(app.S.days[date], stored[date]);
++});
++
++test('a refresh cannot erase a later edit while its save is pending', async () => {
++  const app = await fresh();
++  const gate = deferred();
++  app.runtime.transport = (method) => method === 'GET' ? state(27, { [date]: { code: 'H' } }) : gate.promise;
++  await app.loadState(27);
++  const saving = app.saveDays({ [date]: { code: 'O', comment: 'new note' } });
++  await app.refresh();
++  assert.deepEqual(app.S.days[date], { code: 'O', comment: 'new note' });
++  gate.reject(new Error('simulated save refusal'));
++  assert.equal(await saving, false);
++  assert.equal(app.S.days[date].code, 'H');
++});
++
++test('an older year response is ignored even if it arrives before the requested year', async () => {
++  const app = await fresh();
++  const older = deferred(), newer = deferred();
++  app.runtime.transport = (_method, path) => path.endsWith('27') ? older.promise : newer.promise;
++  const first = app.loadState(27), second = app.loadState(28);
++  older.resolve(state(27));
++  assert.equal(await first, false);
++  assert.equal(app.S.fy, null);
++  newer.resolve(state(28));
++  assert.equal(await second, true);
++  assert.equal(app.S.fy, 28);
++});
++
++test('a successful save followed by a failed refresh is reported as saved', async () => {
++  const app = await fresh();
++  app.runtime.transport = () => state();
++  await app.loadState(27);
++  app.runtime.transport = (method) => {
++    if (method === 'GET') throw new Error('offline');
++    return { updated: 1 };
++  };
++  assert.equal(await app.saveDays({ [date]: { code: 'O' } }), true);
++  assert.match(flags.get('errFlag').textContent, /Saved, but the totals could not refresh/);
++  assert.equal(app.S.days[date].code, 'O');
++});
++
++test('failed mutations do not block subsequent writes', async () => {
++  const app = await fresh();
++  let calls = 0;
++  app.runtime.transport = () => { if (++calls === 1) throw new Error('refused'); return { ok: true }; };
++  const first = app.api('/api/settings', { method: 'PUT', body: '{}' });
++  const second = app.api('/api/settings', { method: 'PUT', body: '{}' });
++  await assert.rejects(first, /refused/);
++  assert.deepEqual(await second, { ok: true });
++});
++
++test('punch times use the attendance timezone, including daylight saving', () => {
++  assert.equal(nowHHMM('Australia/Melbourne', new Date('2026-10-01T00:00:00Z')), '10:00');
++  assert.equal(nowHHMM('Australia/Melbourne', new Date('2026-10-05T00:00:00Z')), '11:00');
++  assert.equal(nowHHMM('UTC', new Date('2026-10-05T00:00:00Z')), '00:00');
++});
+diff --git a/test/version.test.js b/test/version.test.js
+index 49a2a77..23333d0 100644
+--- a/test/version.test.js
++++ b/test/version.test.js
+@@ -4,8 +4,9 @@ import { execFileSync } from 'node:child_process';
+ import { mkdtempSync, mkdirSync, cpSync, readFileSync, writeFileSync } from 'node:fs';
+ import { tmpdir } from 'node:os';
+ import { join } from 'node:path';
++import { fileURLToPath } from 'node:url';
+ 
+-const ROOT = new URL('..', import.meta.url).pathname;
++const ROOT = fileURLToPath(new URL('..', import.meta.url));
+ 
+ function scratchCopy() {
+   const dir = mkdtempSync(join(tmpdir(), 'attendance-bump-'));

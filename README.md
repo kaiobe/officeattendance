@@ -70,13 +70,15 @@ The review and refactor notes are in [the October 2026 review](docs/REVIEW-2026-
 
 The same app, built as a static site that runs entirely in the browser. Each
 person's days and settings are stored on their own phone. There's no server,
-no Docker and no account, and nothing is sent anywhere. It's built from the same
-code as the server version, so fixes land in both.
+no Docker and no account. The only thing that ever leaves the phone is an encrypted
+cloud backup, if they leave it on (see below). It's built from the same code as the
+server version, so fixes land in both.
 
 ### Putting it on Cloudflare
 
 Cloudflare hosts it for free from the private repo. `wrangler.jsonc` in the repo
-tells it to publish the built `dist/` folder as a static site, with no server code.
+tells it to publish the built `dist/` folder as a static site, plus one small Worker
+(`worker/index.js`) that keeps the encrypted cloud backups in a KV namespace.
 
 1. In the Cloudflare dashboard, go to **Workers & Pages › Create application** and pick
    the Git repository option. Sign in to GitHub, give Cloudflare access to
@@ -91,14 +93,21 @@ tells it to publish the built `dist/` folder as a static site, with no server co
    `officeattendance.<your-subdomain>.workers.dev`. Share that with your colleagues,
    or add your own domain under the Worker's **Settings › Domains & Routes**.
 
+The KV namespace for backups (binding `BACKUPS`) is created on the first deploy and
+reused on every deploy after, so there's nothing to set up. If a deploy ever fails
+over KV permissions, create a namespace under **Storage & Databases › KV**, then add
+its id to `wrangler.jsonc`: `"kv_namespaces": [{ "binding": "BACKUPS", "id": "…" }]`.
+
 Every push to `main` redeploys. Pushes to other branches, like `dev`, get their own
 preview address, so you can try changes before they reach anyone.
 
-Cloudflare Pages works too: **Create application › Pages › Connect to Git**, with build
-command `npm run build:standalone` and output directory `dist`.
+Cloudflare Pages works too (**Create application › Pages › Connect to Git**, build
+command `npm run build:standalone`, output directory `dist`), but without the Worker,
+so cloud backup won't work there; file backups still do.
 
 To build it yourself: `npm run build:standalone` writes the site to `dist/`, and any
-static file server can host it.
+static file server can host it (without cloud backup). `npx wrangler dev` runs the
+site and the Worker locally, with a local KV.
 The manifest supports hosting below a subdirectory as well as at the site root.
 The builder refuses source directories and unrelated nonempty output folders.
 If an older `dist/` has no `.attendance-build.json` marker, keep that folder and
@@ -109,11 +118,12 @@ choose a new empty output folder (`node scripts/build-standalone.mjs dist-new`).
 - **First visit:** a setup screen asks for their public holiday state (guessed from the
   phone's time zone), day off each week, standard day, office target and usual hours.
   A new phone starts on a 5-day week of 8.75-hour days, 09:00 to 17:45
-  (`public/local/defaults.js`). **Restore a backup…** on that screen
-  moves someone to a new phone.
+  (`public/local/defaults.js`). Cloud backup is ticked; starting shows their
+  recovery code once. **Restore a backup…** on that screen moves someone to a new
+  phone, from their recovery code or a backup file.
 - **After that:** it's the same app you use, with the tabs, punch button, month view and
-  year grid. Backups and CSV exports go to the phone's share sheet (Files, Drive, email),
-  or a normal download on a computer.
+  year grid. Backup files and CSV exports go to the phone's share sheet (Files, Drive,
+  email), or a normal download on a computer.
 - **Offline:** after its assets have been cached over HTTPS (or localhost), it works
   with no signal. A complete update downloads while online and takes over after all
   open app tabs/windows close. Reopen the app to use it. This keeps each page on one
@@ -127,17 +137,48 @@ it goes unused for a few weeks, unless it's been added to the home screen. So th
 - asks the browser to keep its storage permanently, and Settings › Backup says whether
   it agreed;
 - shows home-screen instructions on the setup screen when it's open in a browser tab;
-- shows a reminder at the top of the page a week after starting with no backup, and a
-  month after the last backup. **Later** puts it off for a week.
+- with cloud backup off or failing, shows a reminder at the top of the page a week
+  after starting with no backup, and a month after the last backup. **Later** puts it
+  off for a week.
 
-The backup file is the only copy outside the phone. It's the same format as the server
-version's, so a colleague's backup could be restored into a server copy too.
+**Save file** in Settings › Backup is a copy they keep themselves. It's the same
+format as the server version's, so a colleague's backup could be restored into a
+server copy too.
 
 Edits reload the latest stored data before writing, and browsers with Web Locks
 coordinate writes across tabs. Storage failures roll back the in-memory change.
 Unreadable saved data is preserved and the load-error screen offers a raw recovery
 download, rather than replacing the original with an empty history. That recovery
 file is for repair; it is not necessarily a valid attendance backup.
+
+### Cloud backup
+
+On by default, and nothing to sign up for:
+
+- **A recovery code, not an account.** Turning it on makes a 16-character code
+  (`XXXX-XXXX-XXXX-XXXX`) on the phone and shows it once to save, copy or share.
+  Settings › Backup › **Show code** shows it again.
+- **Encrypted on the phone.** The code is turned into two things: an id that names the
+  backup, and an AES-256 key that encrypts it (HKDF-SHA-256). Only the id and the
+  encrypted data are sent. The code never leaves the phone, so neither Cloudflare nor
+  you can read anyone's backup, and a lost code can't be recovered.
+- **Automatic.** A few seconds after each change, the whole backup is sent (changes
+  close together are sent once), and again as the app goes to the background. With no
+  signal it waits, says so in Settings, and sends when the connection is back.
+- **Restoring.** **Restore…** asks for the code (any case, spaces or dashes) and
+  replaces the phone's data with the backup. From then on that phone backs up to the
+  same code.
+- **Two phones on one code.** Each backup carries a revision. If another phone backed
+  up since this one last did, this one doesn't overwrite it: Settings asks whether to
+  **Use the cloud copy** or **Keep this phone's**.
+- **Turning it off** deletes the copy in the cloud. Turning it on again makes a new
+  code.
+- Backups untouched for three years expire. Each is limited to 1 MB; a year of
+  attendance is about 30 KB.
+
+Cloudflare's free plan allows 1,000 KV writes a day across the account. Each backup is
+one write, and changes made close together are sent as one, so that's ample for a team
+logging their days, though not for hundreds of people.
 
 ### How it's put together
 
@@ -147,7 +188,10 @@ calls. The server wraps that service in HTTP over SQLite (`server/app.js`). The
 standalone version (`public/local/`) calls it directly over `localStorage`. Both
 supply the same store interface, so there's one copy of every rule.
 `scripts/build-standalone.mjs` copies `public/` to `dist/`, points the page at
-`standalone.js`, and adds a service worker and Cloudflare's `_headers`.
+`standalone.js`, and adds a service worker and Cloudflare's `_headers`. The cloud
+backup is `public/local/cloud.js` (the code, encryption and sending, with retries and
+the revision check), `public/local/cloud-ui.js` (its screens) and `worker/index.js`
+(stores what it's given, checks the revision, never sees a key).
 
 ---
 
@@ -447,9 +491,11 @@ public/
     calc.js       the monthly rollups - mirrors the workbook
     validate.js   every value from outside is checked here before it's stored
     codes.js, csv.js, settings.js, errors.js
-  local/        the standalone version: localStorage store, first run, backups, offline
+  local/        the standalone version: localStorage store, first run, backups, offline,
+                cloud.js + cloud-ui.js (encrypted cloud backup)
   manifest.webmanifest, icons/   what makes it installable on a phone
   lib/dates.js  calendar helpers shared by everything - one copy, no build
+worker/index.js the Cloudflare Worker: stores the standalone version's encrypted backups in KV
 test/           npm test
 scripts/        bump.mjs (versions), test.mjs (test runner), build-standalone.mjs
 ```
@@ -584,5 +630,10 @@ There is no login in the app itself — it relies on the reverse proxy in front 
   this origin only, no framing), `nosniff`, `no-referrer`, and `no-store`.
 - **Exports.** CSV cells that start with `=`, `+`, `-` or `@` get a leading apostrophe, so a
   comment can't run as a formula when the file is opened in Excel.
+- **Cloud backup (standalone version).** Encrypted on the phone with a key from the
+  recovery code; the Worker only stores ciphertext under an id derived from the same
+  code, and refuses cross-site requests, bodies that aren't an encrypted backup, and
+  anything over 1 MB. An id is 256 bits from an 80-bit code, so backups can't be found
+  by guessing.
 - **Container.** Runs as a non-root user that can write only to `/data`, with no Linux
   capabilities and no privilege escalation.

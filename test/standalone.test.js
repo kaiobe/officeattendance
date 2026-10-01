@@ -150,6 +150,7 @@ test('the build: a static site that starts in the browser, works offline and sen
     for (const f of ['./', 'standalone.js', 'app.js', 'core/service.js', 'local/store.js', 'js/main.js', 'lib/dates.js', 'styles.css', 'manifest.webmanifest']) {
       assert.ok(sw.includes(`"${f}"`), `sw.js caches ${f}`);
     }
+    assert.match(sw, /startsWith\(new URL\('sync\/', scope\)\.pathname\)\) return;/, 'cloud backups are never served from the cache');
     const headers = readFileSync(join(out, '_headers'), 'utf8');
     assert.match(headers, /Content-Security-Policy: default-src 'self'/);
     assert.match(headers, /\/sw\.js\n\s+Cache-Control: no-cache/);
@@ -159,12 +160,13 @@ test('the build: a static site that starts in the browser, works offline and sen
   }
 });
 
-test('the Cloudflare config publishes the build output as a static site', () => {
+test('the Cloudflare config: the site from dist/, plus the backup Worker and its storage', () => {
   const src = readFileSync(join(ROOT, 'wrangler.jsonc'), 'utf8').replace(/^\s*\/\/.*$/gm, '');
   const cfg = JSON.parse(src);
   assert.equal(cfg.name, 'officeattendance');
   assert.equal(cfg.assets.directory, './dist');
-  assert.equal(cfg.main, undefined, 'no Worker script: static files only');
+  assert.equal(cfg.main, 'worker/index.js', 'a Worker for cloud backup; everything else is static');
+  assert.deepEqual(cfg.kv_namespaces, [{ binding: 'BACKUPS' }], 'no id: created on first deploy, reused after');
   assert.match(cfg.compatibility_date, /^\d{4}-\d\d-\d\d$/);
 });
 

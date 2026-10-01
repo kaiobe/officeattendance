@@ -668,3 +668,23 @@ td.stat .num, .yl-row .num, .stat-note .num { font-weight: 600; }
 .stat-pair .stat-value, .mstats .stat-value { font-size: 26px; }
 .mstats > .stat-block { min-width: 0; }
 td.stat.est { font-style: italic; }
+
+/* ---------- cloud backup (standalone version) ---------- */
+.set-check { display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface-1); cursor: pointer; }
+.set-check input { width: 20px; height: 20px; margin: 2px 0 0; accent-color: var(--accent); flex: none; }
+.set-check span { display: grid; gap: 2px; font-size: 14px; }
+.set-check small { font-size: 12.5px; color: var(--text-2); line-height: 1.4; }
+.cloud { display: grid; gap: 8px; margin-bottom: 6px; }
+.cloud-status { margin: 0; font-size: 13px; line-height: 1.45; padding: 9px 12px; border-radius: 10px; background: var(--surface-2); color: var(--text-2); }
+.cloud-status b { color: var(--text-1); }
+.cloud-status.ok { background: var(--good-soft); }
+.cloud-status.warn { background: var(--warning-soft); }
+.cloud-status.bad { background: var(--critical-soft); }
+#cloudActions .danger { color: var(--critical); }
+#codeDlg, #restoreDlg { width: min(440px, calc(100vw - 24px)); }
+.code-big { margin: 4px 0; text-align: center; font: 650 clamp(17px, 5.2vw, 24px)/1.2 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; letter-spacing: .04em; padding: 14px 6px; border-radius: 12px; background: var(--surface-2); user-select: all; white-space: nowrap; }
+#codeDlg .actions { justify-content: flex-end; }
+.code-input { width: 100%; height: 46px; font: 600 18px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; letter-spacing: .06em; text-transform: uppercase; text-align: center; border: 1px solid var(--border); border-radius: 10px; background: var(--surface-2); color: var(--text-1); }
+.field-label { font-size: 12px; font-weight: 600; color: var(--text-2); }
+.linkish { justify-self: start; border: 0; background: none; padding: 0; color: var(--accent); font-size: 13px; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
+.linkish[hidden] { display: none; }

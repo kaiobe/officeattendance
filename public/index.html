@@ -233,9 +233,13 @@
 
     <section class="set-sec" aria-labelledby="secBackup">
       <h3 id="secBackup">Backup</h3>
+      <div class="cloud" id="cloudBox" hidden>
+        <p class="cloud-status" id="cloudStatus" role="status"></p>
+        <div class="set-backup" id="cloudActions"></div>
+      </div>
       <div class="set-backup">
         <a class="ghost linkbtn" id="csvLink" download>Export CSV</a>
-        <a class="ghost linkbtn" href="/api/export.json" download>Back up</a>
+        <a class="ghost linkbtn" id="backupLink" href="/api/export.json" download>Back up</a>
         <button class="ghost" id="importBtn">Restore&hellip;</button>
         <input type="file" id="importFile" accept="application/json" hidden>
       </div>
@@ -251,7 +255,7 @@
 <dialog id="welcomeDlg" aria-labelledby="welcomeTitle">
   <div class="card-head"><h2 id="welcomeTitle">Office Attendance</h2></div>
   <div class="dlg-body">
-    <p class="welcome-lead">Track your office days and hours across the October to September year. Everything stays on this phone: there's no account, and nothing is sent anywhere.</p>
+    <p class="welcome-lead">Track your office days and hours across the October to September year. Your data lives on this phone, with no account. Cloud backup keeps an encrypted copy that only your recovery code can open.</p>
     <div class="set-rows">
       <div class="set-row">
         <label for="wState">Public holidays</label>
@@ -282,6 +286,10 @@
         </span>
       </div>
     </div>
+    <label class="set-check" for="wCloud">
+      <input type="checkbox" id="wCloud" checked>
+      <span><b>Back up to the cloud automatically</b><small>Encrypted on this phone before it's sent. You'll get a recovery code to restore it on any phone.</small></span>
+    </label>
     <p class="note">You can change any of these later in Settings.</p>
     <p class="dlg-err" id="welcomeErr" role="alert"></p>
     <div class="actions">
@@ -289,6 +297,33 @@
       <button class="ghost" id="welcomeRestore">Restore a backup&hellip;</button>
     </div>
     <p class="note install-tip" id="installTip">Add it to your home screen so it opens like an app and keeps your data safe: on iPhone, Share &rsaquo; <b>Add to Home Screen</b>; on Android, the menu &rsaquo; <b>Install app</b>.</p>
+  </div>
+</dialog>
+
+<dialog id="codeDlg" aria-labelledby="codeTitle">
+  <div class="card-head"><h2 id="codeTitle">Your recovery code</h2></div>
+  <div class="dlg-body">
+    <p id="codeLead">Save this somewhere safe: a password manager, Notes, or an email to yourself. It's the only way to restore your backup on another phone. Your data is encrypted with it, so nobody else can recover it for you.</p>
+    <p class="code-big" id="codeText"></p>
+    <div class="actions">
+      <button class="ghost" id="codeCopy">Copy</button>
+      <button class="ghost" id="codeShare">Share&hellip;</button>
+      <button class="primary" id="codeDone">I've saved it</button>
+    </div>
+  </div>
+</dialog>
+
+<dialog id="restoreDlg" aria-labelledby="restoreTitle">
+  <div class="card-head"><h2 id="restoreTitle">Restore a backup</h2></div>
+  <div class="dlg-body">
+    <label class="field-label" for="restoreCode">Recovery code</label>
+    <input type="text" id="restoreCode" class="code-input" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="XXXX-XXXX-XXXX-XXXX" maxlength="24">
+    <p class="dlg-err" id="restoreErr" role="alert"></p>
+    <div class="actions">
+      <button class="primary" id="restoreGo">Restore</button>
+      <button class="ghost" id="restoreCancel">Cancel</button>
+    </div>
+    <button class="linkish" id="restoreFile">Use a backup file instead</button>
   </div>
 </dialog>
 

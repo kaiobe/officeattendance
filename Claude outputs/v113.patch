@@ -1,0 +1,1180 @@
+diff --git a/.dockerignore b/.dockerignore
+index 3b08ca0..0710e15 100644
+--- a/.dockerignore
++++ b/.dockerignore
+@@ -9,3 +9,4 @@ README.md
+ test
+ dist
+ wrangler.jsonc
++worker
+diff --git a/.gitignore b/.gitignore
+index 61a7ebd..26de48c 100644
+--- a/.gitignore
++++ b/.gitignore
+@@ -13,3 +13,6 @@ Thumbs.db
+ 
+ # the standalone build (npm run build:standalone)
+ dist/
++
++# wrangler dev's local state
++.wrangler/
+diff --git a/CHANGELOG.md b/CHANGELOG.md
+index 404f107..9579b06 100644
+--- a/CHANGELOG.md
++++ b/CHANGELOG.md
+@@ -10,6 +10,26 @@ Versions are `MAJOR.MINOR.PATCH`:
+ `npm run bump [major|minor|patch]` moves the number in every place it appears
+ and opens an entry here. Nothing else should edit a version by hand.
+ 
++## 1.13.0 - 2026-10-01
++
++- **Cloud backup for the standalone version.** Each phone backs itself up, encrypted,
++  a few seconds after every change. No account: setup shows a recovery code
++  (`XXXX-XXXX-XXXX-XXXX`) once, and that code restores everything on a new phone.
++  - The code stays on the phone. It makes both the backup's id and its AES-256 key, so
++    only encrypted data is ever sent, and no one else can read it.
++  - With no signal it waits, says so in Settings, and sends when the connection's back.
++    It also sends as the app goes to the background.
++  - Two phones on one code never overwrite each other silently: the second is asked
++    whether to use the cloud copy or keep its own.
++  - Settings › Backup shows whether it's on and when it last backed up, with
++    **Show code**, **Restore…** and **Turn off** (which deletes the cloud copy).
++  - It's ticked on the setup screen; untick it to keep everything on the phone.
++- **The file backup stays**, now labelled **Save file** and **Open file…** in the
++  standalone version, so **Restore…** clearly means the code. The backup reminder only
++  appears when cloud backup is off or failing.
++- **Cloudflare:** a small Worker (`worker/index.js`) now runs beside the static site and
++  keeps the backups in a KV namespace, created on the first deploy. Nothing to set up.
++
+ ## 1.12.0 - 2026-10-01
+ 
+ - **Confirmed monthly rules.** Both days and hours use Office + Home days. The hours
+diff --git a/README.md b/README.md
+index fc15c65..fc87d31 100644
+--- a/README.md
++++ b/README.md
+@@ -70,13 +70,15 @@ The review and refactor notes are in [the October 2026 review](docs/REVIEW-2026-
+ 
+ The same app, built as a static site that runs entirely in the browser. Each
+ person's days and settings are stored on their own phone. There's no server,
+-no Docker and no account, and nothing is sent anywhere. It's built from the same
+-code as the server version, so fixes land in both.
++no Docker and no account. The only thing that ever leaves the phone is an encrypted
++cloud backup, if they leave it on (see below). It's built from the same code as the
++server version, so fixes land in both.
+ 
+ ### Putting it on Cloudflare
+ 
+ Cloudflare hosts it for free from the private repo. `wrangler.jsonc` in the repo
+-tells it to publish the built `dist/` folder as a static site, with no server code.
++tells it to publish the built `dist/` folder as a static site, plus one small Worker
++(`worker/index.js`) that keeps the encrypted cloud backups in a KV namespace.
+ 
+ 1. In the Cloudflare dashboard, go to **Workers & Pages › Create application** and pick
+    the Git repository option. Sign in to GitHub, give Cloudflare access to
+@@ -91,14 +93,21 @@ tells it to publish the built `dist/` folder as a static site, with no server co
+    `officeattendance.<your-subdomain>.workers.dev`. Share that with your colleagues,
+    or add your own domain under the Worker's **Settings › Domains & Routes**.
+ 
++The KV namespace for backups (binding `BACKUPS`) is created on the first deploy and
++reused on every deploy after, so there's nothing to set up. If a deploy ever fails
++over KV permissions, create a namespace under **Storage & Databases › KV**, then add
++its id to `wrangler.jsonc`: `"kv_namespaces": [{ "binding": "BACKUPS", "id": "…" }]`.
++
+ Every push to `main` redeploys. Pushes to other branches, like `dev`, get their own
+ preview address, so you can try changes before they reach anyone.
+ 
+-Cloudflare Pages works too: **Create application › Pages › Connect to Git**, with build
+-command `npm run build:standalone` and output directory `dist`.
++Cloudflare Pages works too (**Create application › Pages › Connect to Git**, build
++command `npm run build:standalone`, output directory `dist`), but without the Worker,
++so cloud backup won't work there; file backups still do.
+ 
+ To build it yourself: `npm run build:standalone` writes the site to `dist/`, and any
+-static file server can host it.
++static file server can host it (without cloud backup). `npx wrangler dev` runs the
++site and the Worker locally, with a local KV.
+ The manifest supports hosting below a subdirectory as well as at the site root.
+ The builder refuses source directories and unrelated nonempty output folders.
+ If an older `dist/` has no `.attendance-build.json` marker, keep that folder and
+@@ -109,11 +118,12 @@ choose a new empty output folder (`node scripts/build-standalone.mjs dist-new`).
+ - **First visit:** a setup screen asks for their public holiday state (guessed from the
+   phone's time zone), day off each week, standard day, office target and usual hours.
+   A new phone starts on a 5-day week of 8.75-hour days, 09:00 to 17:45
+-  (`public/local/defaults.js`). **Restore a backup…** on that screen
+-  moves someone to a new phone.
++  (`public/local/defaults.js`). Cloud backup is ticked; starting shows their
++  recovery code once. **Restore a backup…** on that screen moves someone to a new
++  phone, from their recovery code or a backup file.
+ - **After that:** it's the same app you use, with the tabs, punch button, month view and
+-  year grid. Backups and CSV exports go to the phone's share sheet (Files, Drive, email),
+-  or a normal download on a computer.
++  year grid. Backup files and CSV exports go to the phone's share sheet (Files, Drive,
++  email), or a normal download on a computer.
+ - **Offline:** after its assets have been cached over HTTPS (or localhost), it works
+   with no signal. A complete update downloads while online and takes over after all
+   open app tabs/windows close. Reopen the app to use it. This keeps each page on one
+@@ -127,11 +137,13 @@ it goes unused for a few weeks, unless it's been added to the home screen. So th
+ - asks the browser to keep its storage permanently, and Settings › Backup says whether
+   it agreed;
+ - shows home-screen instructions on the setup screen when it's open in a browser tab;
+-- shows a reminder at the top of the page a week after starting with no backup, and a
+-  month after the last backup. **Later** puts it off for a week.
++- with cloud backup off or failing, shows a reminder at the top of the page a week
++  after starting with no backup, and a month after the last backup. **Later** puts it
++  off for a week.
+ 
+-The backup file is the only copy outside the phone. It's the same format as the server
+-version's, so a colleague's backup could be restored into a server copy too.
++**Save file** in Settings › Backup is a copy they keep themselves. It's the same
++format as the server version's, so a colleague's backup could be restored into a
++server copy too.
+ 
+ Edits reload the latest stored data before writing, and browsers with Web Locks
+ coordinate writes across tabs. Storage failures roll back the in-memory change.
+@@ -139,6 +151,35 @@ Unreadable saved data is preserved and the load-error screen offers a raw recove
+ download, rather than replacing the original with an empty history. That recovery
+ file is for repair; it is not necessarily a valid attendance backup.
+ 
++### Cloud backup
++
++On by default, and nothing to sign up for:
++
++- **A recovery code, not an account.** Turning it on makes a 16-character code
++  (`XXXX-XXXX-XXXX-XXXX`) on the phone and shows it once to save, copy or share.
++  Settings › Backup › **Show code** shows it again.
++- **Encrypted on the phone.** The code is turned into two things: an id that names the
++  backup, and an AES-256 key that encrypts it (HKDF-SHA-256). Only the id and the
++  encrypted data are sent. The code never leaves the phone, so neither Cloudflare nor
++  you can read anyone's backup, and a lost code can't be recovered.
++- **Automatic.** A few seconds after each change, the whole backup is sent (changes
++  close together are sent once), and again as the app goes to the background. With no
++  signal it waits, says so in Settings, and sends when the connection is back.
++- **Restoring.** **Restore…** asks for the code (any case, spaces or dashes) and
++  replaces the phone's data with the backup. From then on that phone backs up to the
++  same code.
++- **Two phones on one code.** Each backup carries a revision. If another phone backed
++  up since this one last did, this one doesn't overwrite it: Settings asks whether to
++  **Use the cloud copy** or **Keep this phone's**.
++- **Turning it off** deletes the copy in the cloud. Turning it on again makes a new
++  code.
++- Backups untouched for three years expire. Each is limited to 1 MB; a year of
++  attendance is about 30 KB.
++
++Cloudflare's free plan allows 1,000 KV writes a day across the account. Each backup is
++one write, and changes made close together are sent as one, so that's ample for a team
++logging their days, though not for hundreds of people.
++
+ ### How it's put together
+ 
+ The logic that doesn't need Node lives in `public/core/`: calculations, holidays,
+@@ -147,7 +188,10 @@ calls. The server wraps that service in HTTP over SQLite (`server/app.js`). The
+ standalone version (`public/local/`) calls it directly over `localStorage`. Both
+ supply the same store interface, so there's one copy of every rule.
+ `scripts/build-standalone.mjs` copies `public/` to `dist/`, points the page at
+-`standalone.js`, and adds a service worker and Cloudflare's `_headers`.
++`standalone.js`, and adds a service worker and Cloudflare's `_headers`. The cloud
++backup is `public/local/cloud.js` (the code, encryption and sending, with retries and
++the revision check), `public/local/cloud-ui.js` (its screens) and `worker/index.js`
++(stores what it's given, checks the revision, never sees a key).
+ 
+ ---
+ 
+@@ -447,9 +491,11 @@ public/
+     calc.js       the monthly rollups - mirrors the workbook
+     validate.js   every value from outside is checked here before it's stored
+     codes.js, csv.js, settings.js, errors.js
+-  local/        the standalone version: localStorage store, first run, backups, offline
++  local/        the standalone version: localStorage store, first run, backups, offline,
++                cloud.js + cloud-ui.js (encrypted cloud backup)
+   manifest.webmanifest, icons/   what makes it installable on a phone
+   lib/dates.js  calendar helpers shared by everything - one copy, no build
++worker/index.js the Cloudflare Worker: stores the standalone version's encrypted backups in KV
+ test/           npm test
+ scripts/        bump.mjs (versions), test.mjs (test runner), build-standalone.mjs
+ ```
+@@ -584,5 +630,10 @@ There is no login in the app itself — it relies on the reverse proxy in front
+   this origin only, no framing), `nosniff`, `no-referrer`, and `no-store`.
+ - **Exports.** CSV cells that start with `=`, `+`, `-` or `@` get a leading apostrophe, so a
+   comment can't run as a formula when the file is opened in Excel.
++- **Cloud backup (standalone version).** Encrypted on the phone with a key from the
++  recovery code; the Worker only stores ciphertext under an id derived from the same
++  code, and refuses cross-site requests, bodies that aren't an encrypted backup, and
++  anything over 1 MB. An id is 256 bits from an 80-bit code, so backups can't be found
++  by guessing.
+ - **Container.** Runs as a non-root user that can write only to `/data`, with no Linux
+   capabilities and no privilege escalation.
+diff --git a/package.json b/package.json
+index 0aab383..10f679d 100644
+--- a/package.json
++++ b/package.json
+@@ -1,6 +1,6 @@
+ {
+   "name": "office-attendance",
+-  "version": "1.12.0",
++  "version": "1.13.0",
+   "private": true,
+   "type": "module",
+   "description": "Self-hosted office attendance tracker (days + hours) for an Oct-Sep financial year",
+diff --git a/public/app.js b/public/app.js
+index cc78940..dec70ba 100644
+--- a/public/app.js
++++ b/public/app.js
+@@ -11,6 +11,6 @@
+  */
+ import { boot } from './js/main.js';
+ 
+-const APP_VERSION = '1.12.0';
++const APP_VERSION = '1.13.0';
+ 
+ boot(APP_VERSION);
+diff --git a/public/index.html b/public/index.html
+index 3fa787d..198f881 100644
+--- a/public/index.html
++++ b/public/index.html
+@@ -233,9 +233,13 @@
+ 
+     <section class="set-sec" aria-labelledby="secBackup">
+       <h3 id="secBackup">Backup</h3>
++      <div class="cloud" id="cloudBox" hidden>
++        <p class="cloud-status" id="cloudStatus" role="status"></p>
++        <div class="set-backup" id="cloudActions"></div>
++      </div>
+       <div class="set-backup">
+         <a class="ghost linkbtn" id="csvLink" download>Export CSV</a>
+-        <a class="ghost linkbtn" href="/api/export.json" download>Back up</a>
++        <a class="ghost linkbtn" id="backupLink" href="/api/export.json" download>Back up</a>
+         <button class="ghost" id="importBtn">Restore&hellip;</button>
+         <input type="file" id="importFile" accept="application/json" hidden>
+       </div>
+@@ -251,7 +255,7 @@
+ <dialog id="welcomeDlg" aria-labelledby="welcomeTitle">
+   <div class="card-head"><h2 id="welcomeTitle">Office Attendance</h2></div>
+   <div class="dlg-body">
+-    <p class="welcome-lead">Track your office days and hours across the October to September year. Everything stays on this phone: there's no account, and nothing is sent anywhere.</p>
++    <p class="welcome-lead">Track your office days and hours across the October to September year. Your data lives on this phone, with no account. Cloud backup keeps an encrypted copy that only your recovery code can open.</p>
+     <div class="set-rows">
+       <div class="set-row">
+         <label for="wState">Public holidays</label>
+@@ -282,6 +286,10 @@
+         </span>
+       </div>
+     </div>
++    <label class="set-check" for="wCloud">
++      <input type="checkbox" id="wCloud" checked>
++      <span><b>Back up to the cloud automatically</b><small>Encrypted on this phone before it's sent. You'll get a recovery code to restore it on any phone.</small></span>
++    </label>
+     <p class="note">You can change any of these later in Settings.</p>
+     <p class="dlg-err" id="welcomeErr" role="alert"></p>
+     <div class="actions">
+@@ -292,6 +300,33 @@
+   </div>
+ </dialog>
+ 
++<dialog id="codeDlg" aria-labelledby="codeTitle">
++  <div class="card-head"><h2 id="codeTitle">Your recovery code</h2></div>
++  <div class="dlg-body">
++    <p id="codeLead">Save this somewhere safe: a password manager, Notes, or an email to yourself. It's the only way to restore your backup on another phone. Your data is encrypted with it, so nobody else can recover it for you.</p>
++    <p class="code-big" id="codeText"></p>
++    <div class="actions">
++      <button class="ghost" id="codeCopy">Copy</button>
++      <button class="ghost" id="codeShare">Share&hellip;</button>
++      <button class="primary" id="codeDone">I've saved it</button>
++    </div>
++  </div>
++</dialog>
++
++<dialog id="restoreDlg" aria-labelledby="restoreTitle">
++  <div class="card-head"><h2 id="restoreTitle">Restore a backup</h2></div>
++  <div class="dlg-body">
++    <label class="field-label" for="restoreCode">Recovery code</label>
++    <input type="text" id="restoreCode" class="code-input" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="XXXX-XXXX-XXXX-XXXX" maxlength="24">
++    <p class="dlg-err" id="restoreErr" role="alert"></p>
++    <div class="actions">
++      <button class="primary" id="restoreGo">Restore</button>
++      <button class="ghost" id="restoreCancel">Cancel</button>
++    </div>
++    <button class="linkish" id="restoreFile">Use a backup file instead</button>
++  </div>
++</dialog>
++
+ <dialog id="confirmDlg" aria-labelledby="confirmTitle" aria-describedby="confirmBody">
+   <div class="card-head"><h2 id="confirmTitle">Change the time?</h2></div>
+   <div class="dlg-body">
+diff --git a/public/local/cloud-ui.js b/public/local/cloud-ui.js
+new file mode 100644
+index 0000000..3209ab4
+--- /dev/null
++++ b/public/local/cloud-ui.js
+@@ -0,0 +1,192 @@
++/**
++ * The screens for cloud backup (cloud.js does the work): the recovery code
++ * shown once at setup, restoring from a code, and the status and controls in
++ * Settings › Backup.
++ */
++import { createCloud, newCode, normaliseCode } from './cloud.js';
++import { $, esc } from '../js/format.js';
++import { flash, askConfirm } from '../js/dialogs.js';
++import { S, loadState } from '../js/state.js';
++
++/** "just now", "4 min ago", "3 h ago", "2 days ago". */
++function ago(ts) {
++  const s = Math.max(0, (Date.now() - ts) / 1000);
++  if (s < 45) return 'just now';
++  if (s < 3600) return `${Math.round(s / 60)} min ago`;
++  if (s < 86400) return `${Math.round(s / 3600)} h ago`;
++  const d = Math.round(s / 86400);
++  return `${d} ${d === 1 ? 'day' : 'days'} ago`;
++}
++
++export function setupCloud({ store, transport }) {
++  let restoring = false;
++  const cloud = createCloud({
++    store,
++    snapshot: async () => JSON.parse((await transport('GET', '/api/export.json')).body),
++    onChange: render,
++  });
++
++  /* ---------- the recovery code, shown once ---------- */
++
++  function showCode(code, { first = false } = {}) {
++    const dlg = $('codeDlg');
++    $('codeText').textContent = code;
++    $('codeLead').hidden = !first;
++    $('codeShare').hidden = !navigator.share;
++    $('codeCopy').onclick = async () => {
++      try { await navigator.clipboard.writeText(code); flash('Recovery code copied'); }
++      catch { flash('Select the code and copy it', true); }
++    };
++    $('codeShare').onclick = () => navigator.share({ title: 'Office Attendance recovery code', text: `Office Attendance recovery code: ${code}` }).catch(() => {});
++    return new Promise((resolve) => {
++      // The first time, it has to be acknowledged; later, Escape just closes it.
++      const onCancel = (e) => {
++        if (first) { e.preventDefault(); return; }
++        dlg.removeEventListener('cancel', onCancel);
++        resolve();
++      };
++      dlg.addEventListener('cancel', onCancel);
++      $('codeDone').onclick = () => { dlg.removeEventListener('cancel', onCancel); dlg.close(); resolve(); };
++      dlg.showModal();
++    });
++  }
++
++  /* ---------- restoring from a code ---------- */
++
++  /**
++   * Ask for a code and bring that backup in, replacing what's on this phone.
++   * Resolves true when something was restored. `file` is what "Use a backup
++   * file instead" does.
++   */
++  function restoreDialog({ confirmReplace = false, file = null } = {}) {
++    const dlg = $('restoreDlg');
++    $('restoreErr').textContent = '';
++    $('restoreCode').value = '';
++    $('restoreFile').hidden = !file;
++    return new Promise((resolve) => {
++      const onCancel = () => { dlg.removeEventListener('cancel', onCancel); resolve(false); };
++      dlg.addEventListener('cancel', onCancel);
++      const finish = (v) => { dlg.removeEventListener('cancel', onCancel); dlg.close(); resolve(v); };
++      $('restoreCancel').onclick = () => finish(false);
++      $('restoreFile').onclick = () => { finish(false); file(); };
++      $('restoreGo').onclick = async () => {
++        $('restoreErr').textContent = '';
++        $('restoreGo').disabled = true;
++        try {
++          const got = await cloud.fetchBackup($('restoreCode').value);
++          const n = Object.keys(got.data.days || {}).length;
++          if (confirmReplace && !(await askConfirm({
++            title: 'Replace this phone\'s data?',
++            body: `The backup holds ${n} days${got.updated ? `, saved ${ago(got.updated)}` : ''}. Everything on this phone is replaced by it, and this phone backs up to that code from now on.`,
++            ok: 'Replace',
++          }))) { $('restoreGo').disabled = false; return; }
++          restoring = true;
++          await transport('POST', '/api/import', { days: got.data.days, settings: got.data.settings, replace: true });
++          restoring = false;
++          cloud.adopt(got.code, { rev: got.rev, last: got.updated });
++          store.setMeta('lastBackup', Date.now());
++          flash(`Restored ${n} days`);
++          finish(true);
++        } catch (e) {
++          restoring = false;
++          $('restoreErr').textContent = e.message;
++        } finally {
++          $('restoreGo').disabled = false;
++        }
++      };
++      $('restoreCode').onkeydown = (e) => { if (e.key === 'Enter') $('restoreGo').click(); };
++      dlg.showModal();
++      $('restoreCode').focus();
++    });
++  }
++
++  /* ---------- Settings › Backup ---------- */
++
++  function render(st = cloud.status()) {
++    const box = $('cloudBox');
++    if (!box) return;
++    box.hidden = false;
++    const line = $('cloudStatus');
++    const acts = [];
++    if (!st.on) {
++      line.className = 'cloud-status off';
++      line.innerHTML = '<b>Cloud backup is off.</b> Your data is only on this phone.';
++      acts.push(['cloudOn', 'primary', 'Turn on cloud backup']);
++      acts.push(['cloudRestore', 'ghost', 'Restore…']);
++    } else if (st.conflict) {
++      line.className = 'cloud-status bad';
++      line.innerHTML = `<b>Another device backed up to your code</b>${st.conflict.updated ? ` ${ago(st.conflict.updated)}` : ''}. Choose which copy to keep.`;
++      acts.push(['cloudUseCloud', 'primary', 'Use the cloud copy']);
++      acts.push(['cloudKeepMine', 'ghost', "Keep this phone's"]);
++    } else {
++      const when = st.pending
++        ? (st.error === 'offline' ? 'Waiting for a connection to back up' : st.error ? `Couldn't back up: ${esc(st.error)}. It will try again.` : 'Backing up…')
++        : st.last ? `Backed up ${ago(st.last)}` : 'Backed up';
++      line.className = `cloud-status ${st.pending && st.error ? 'warn' : 'ok'}`;
++      line.innerHTML = `<b>Cloud backup is on.</b> ${when}`;
++      acts.push(['cloudShowCode', 'ghost', 'Show code']);
++      acts.push(['cloudRestore', 'ghost', 'Restore…']);
++      acts.push(['cloudOff', 'ghost danger', 'Turn off']);
++    }
++    $('cloudActions').innerHTML = acts.map(([id, cls, label]) => `<button class="${cls}" id="${id}">${label}</button>`).join('');
++    const on = (id, fn) => { const b = $(id); if (b) b.onclick = fn; };
++    on('cloudOn', async () => {
++      const code = newCode();
++      cloud.adopt(code);
++      await showCode(code, { first: true });
++      cloud.flush();
++    });
++    on('cloudShowCode', () => showCode(st.code));
++    on('cloudRestore', async () => { if (await restoreDialog({ confirmReplace: true })) await loadState(S.fy); });
++    on('cloudOff', async () => {
++      if (!(await askConfirm({
++        title: 'Turn off cloud backup?',
++        body: 'The copy in the cloud is deleted, and your data stays only on this phone. You can turn it on again later with a new code.',
++        ok: 'Turn off',
++      }))) return;
++      await cloud.turnOff();
++      flash('Cloud backup is off');
++    });
++    on('cloudUseCloud', async () => {
++      try {
++        const got = await cloud.fetchBackup(st.code);
++        restoring = true;
++        await transport('POST', '/api/import', { days: got.data.days, settings: got.data.settings, replace: true });
++        restoring = false;
++        cloud.adopt(got.code, { rev: got.rev, last: got.updated });
++        await loadState(S.fy);
++        flash('This phone now matches the cloud copy');
++      } catch (e) { restoring = false; flash(e.message, true); }
++    });
++    on('cloudKeepMine', async () => {
++      await cloud.push({ force: true });
++      flash("This phone's data is now the cloud copy");
++    });
++  }
++
++  /** Keep the backup going: after changes, when the signal comes back, and as the app goes to the background. */
++  function start() {
++    render();
++    cloud.flush();
++    window.addEventListener('online', () => cloud.flush());
++    const away = () => { if (document.visibilityState === 'hidden') cloud.flush({ keepalive: true }); };
++    document.addEventListener('visibilitychange', away);
++    window.addEventListener('pagehide', () => cloud.flush({ keepalive: true }));
++    setInterval(() => render(), 60000);     // keep "backed up 4 min ago" honest
++  }
++
++  return {
++    cloud,
++    afterChange: () => { if (!restoring) cloud.schedule(); },
++    showCode,
++    restoreDialog,
++    start,
++    /** From the setup screen: start backing up under a new code, and show it. */
++    async begin() {
++      const code = newCode();
++      cloud.adopt(code);
++      await showCode(code, { first: true });
++    },
++    normaliseCode,
++  };
++}
+diff --git a/public/local/cloud.js b/public/local/cloud.js
+new file mode 100644
+index 0000000..2d9a526
+--- /dev/null
++++ b/public/local/cloud.js
+@@ -0,0 +1,181 @@
++/**
++ * Cloud backup for the standalone version: an encrypted copy of this phone's
++ * data, kept by the site's Worker (worker/index.js), restorable anywhere with
++ * the recovery code.
++ *
++ * The recovery code is 16 characters - 80 random bits - shown as
++ * XXXX-XXXX-XXXX-XXXX in Crockford base32 (no I, L, O or U, so it's hard to
++ * misread; typing one of those is forgiven). From it, two things are derived
++ * on the phone with HKDF-SHA-256:
++ *   - the backup's id, which is all the server ever sees of the code, and
++ *   - an AES-GCM key that encrypts the backup before it leaves the phone.
++ * The server stores ciphertext it can't read. Lose the code and the backup
++ * can't be opened by anyone - that's the point, and the setup says so.
++ *
++ * A backup goes up a few seconds after each change, so a run of edits is one
++ * upload. With no signal it waits, and goes when the connection is back or the
++ * app is next opened. Each upload names the revision it replaces, so if
++ * another device has backed up to the same code since, this one stops and
++ * asks rather than overwriting it.
++ */
++
++const ALPHABET = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
++const DEBOUNCE_MS = 4000;
++const enc = new TextEncoder();
++
++/** A new recovery code: 16 random base32 characters, in fours. */
++export function newCode() {
++  const bytes = crypto.getRandomValues(new Uint8Array(16));
++  const chars = [...bytes].map((b) => ALPHABET[b & 31]).join('');
++  return chars.match(/.{4}/g).join('-');
++}
++
++/** A typed code as XXXX-XXXX-XXXX-XXXX, or null if it can't be one. Spaces, dashes and case don't matter. */
++export function normaliseCode(raw) {
++  const s = String(raw || '').toUpperCase().replace(/[\s-]/g, '').replace(/O/g, '0').replace(/[IL]/g, '1');
++  if (!/^[0-9A-HJKMNP-TV-Z]{16}$/.test(s)) return null;
++  return s.match(/.{4}/g).join('-');
++}
++
++const b64 = (buf) => btoa(String.fromCharCode(...new Uint8Array(buf)));
++const unb64 = (s) => Uint8Array.from(atob(s), (c) => c.charCodeAt(0));
++const hex = (buf) => [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, '0')).join('');
++
++/** The backup id and encryption key a code stands for. */
++export async function deriveFromCode(code) {
++  const base = await crypto.subtle.importKey('raw', enc.encode(code.replace(/-/g, '')), 'HKDF', false, ['deriveBits', 'deriveKey']);
++  const salt = enc.encode('office-attendance');
++  const id = hex(await crypto.subtle.deriveBits({ name: 'HKDF', hash: 'SHA-256', salt, info: enc.encode('backup-id') }, base, 256));
++  const key = await crypto.subtle.deriveKey({ name: 'HKDF', hash: 'SHA-256', salt, info: enc.encode('backup-key') },
++    base, { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']);
++  return { id, key };
++}
++
++export async function encryptBackup(key, data) {
++  const iv = crypto.getRandomValues(new Uint8Array(12));
++  const ct = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, enc.encode(JSON.stringify(data)));
++  return { v: 1, iv: b64(iv), ct: b64(ct) };
++}
++
++export async function decryptBackup(key, box) {
++  const pt = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: unb64(box.iv) }, key, unb64(box.ct));
++  return JSON.parse(new TextDecoder().decode(pt));
++}
++
++/**
++ * The backup engine for one phone. `store` keeps the code and status in its
++ * meta; `snapshot()` returns the data to back up; `onChange()` is told when
++ * the status changes, for Settings to redraw.
++ */
++export function createCloud({ store, snapshot, onChange = () => {}, fetchImpl = (...a) => fetch(...a), base = '' }) {
++  let timer = null;
++  let running = null;
++  const meta = (k) => store.getMeta(k);
++  const set = (k, v) => store.setMeta(k, v);
++
++  const status = () => ({
++    on: !!meta('cloudCode'),
++    code: meta('cloudCode') || null,
++    last: meta('cloudLast') || null,
++    pending: !!meta('cloudPending'),
++    error: meta('cloudError') || null,
++    conflict: meta('cloudConflict') || null,
++  });
++
++  async function push({ force = false, keepalive = false } = {}) {
++    const code = meta('cloudCode');
++    if (!code) return status();
++    if (meta('cloudConflict') && !force) return status();
++    const { id, key } = await deriveFromCode(code);
++    const box = await encryptBackup(key, await snapshot());
++    let res;
++    try {
++      res = await fetchImpl(`${base}/sync/${id}`, {
++        method: 'PUT', keepalive,
++        headers: { 'content-type': 'application/json', 'if-match': force ? '*' : (meta('cloudRev') || 'new') },
++        body: JSON.stringify(box),
++      });
++    } catch {
++      set('cloudPending', true);
++      set('cloudError', 'offline');
++      onChange(status());
++      return status();
++    }
++    const body = await res.json().catch(() => ({}));
++    if (res.ok) {
++      set('cloudRev', body.rev);
++      set('cloudLast', body.updated || Date.now());
++      set('cloudPending', false);
++      set('cloudError', null);
++      set('cloudConflict', null);
++    } else if (res.status === 409) {
++      set('cloudConflict', { rev: body.rev, updated: body.updated || null });
++      set('cloudPending', true);
++    } else {
++      set('cloudPending', true);
++      set('cloudError', body.error || `HTTP ${res.status}`);
++    }
++    onChange(status());
++    return status();
++  }
++
++  /** Back up soon: a few seconds after the last of a run of changes. */
++  function schedule() {
++    if (!meta('cloudCode')) return;
++    set('cloudPending', true);
++    clearTimeout(timer);
++    timer = setTimeout(() => { timer = null; flush(); }, DEBOUNCE_MS);
++  }
++
++  /** Back up now, if anything's waiting. One upload at a time. */
++  function flush(opts = {}) {
++    clearTimeout(timer);
++    timer = null;
++    if (!meta('cloudCode') || !meta('cloudPending')) return Promise.resolve(status());
++    if (running) return running.then(() => flush(opts));
++    running = push(opts).finally(() => { running = null; });
++    return running;
++  }
++
++  /** The backup a code points to, decrypted - or an Error saying why not. */
++  async function fetchBackup(rawCode) {
++    const code = normaliseCode(rawCode);
++    if (!code) throw new Error("That isn't a recovery code. It's 16 letters and numbers, like K7QM-2XRP-9TVD-4HNA.");
++    const { id, key } = await deriveFromCode(code);
++    let res;
++    try { res = await fetchImpl(`${base}/sync/${id}`, { headers: { accept: 'application/json' } }); }
++    catch { throw new Error("Couldn't reach the backup. Check your connection and try again."); }
++    if (res.status === 404) throw new Error('No backup found for that code. Check it and try again.');
++    if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || `HTTP ${res.status}`);
++    const rev = (res.headers.get('etag') || '').replace(/"/g, '');
++    let data;
++    try { data = await decryptBackup(key, await res.json()); }
++    catch { throw new Error("That backup couldn't be opened with this code."); }
++    return { code, rev, data, updated: Number(res.headers.get('x-updated')) || null };
++  }
++
++  /** Start backing up under a code: a new one, or one just restored from. */
++  function adopt(code, { rev = null, last = null } = {}) {
++    set('cloudCode', code);
++    set('cloudRev', rev);
++    set('cloudLast', last);
++    set('cloudConflict', null);
++    set('cloudError', null);
++    set('cloudPending', !rev);       // a new code has nothing up yet
++    onChange(status());
++  }
++
++  /** Stop backing up, and remove the copy in the cloud. */
++  async function turnOff() {
++    const code = meta('cloudCode');
++    if (code) {
++      const { id } = await deriveFromCode(code);
++      try { await fetchImpl(`${base}/sync/${id}`, { method: 'DELETE' }); } catch { /* offline: it expires on its own */ }
++    }
++    clearTimeout(timer);
++    for (const k of ['cloudCode', 'cloudRev', 'cloudLast', 'cloudPending', 'cloudError', 'cloudConflict']) set(k, null);
++    onChange(status());
++  }
++
++  return { status, schedule, flush, push, fetchBackup, adopt, turnOff };
++}
+diff --git a/public/local/install.js b/public/local/install.js
+index ba1d1c7..65fd0f5 100644
+--- a/public/local/install.js
++++ b/public/local/install.js
+@@ -11,6 +11,7 @@ import { localStore } from './store.js';
+ import { createService, Download } from '../core/service.js';
+ import { STATES } from '../core/holidays.js';
+ import { NEW_PHONE_SETTINGS } from './defaults.js';
++import { setupCloud } from './cloud-ui.js';
+ import { runtime } from '../js/state.js';
+ import { $, plural } from '../js/format.js';
+ import { flash, attempt } from '../js/dialogs.js';
+@@ -75,8 +76,11 @@ export function installLocal() {
+       return out;
+     });
+     if (out instanceof Download) return out;
++    if (method !== 'GET') cloudUi.afterChange();
+     return JSON.parse(JSON.stringify(out));
+   };
++  // Cloud backup: an encrypted copy after each change (cloud.js, cloud-ui.js).
++  const cloudUi = setupCloud({ store, transport: (...a) => runtime.transport(...a) });
+ 
+   runtime.saveRecovery = () => saveOrShare(new Download('application/json',
+     `attendance-recovery-${localToday()}.json`, store.raw() || '{}'));
+@@ -92,16 +96,20 @@ export function installLocal() {
+   };
+ 
+   runtime.beforeLoad = async () => {
+-    if (!store.getMeta('setupDone')) await welcome(store, saveMeta);
++    if (!store.getMeta('setupDone')) await welcome(store, saveMeta, cloudUi);
+   };
+ 
+   runtime.afterLoad = () => {
+-    attempt(() => keepData(saveMeta));
+-    attempt(() => nudge(store, saveMeta));
++    attempt(() => keepData(saveMeta, cloudUi.cloud));
++    attempt(() => cloudUi.start());
++    attempt(() => nudge(store, saveMeta, cloudUi.cloud));
+     registerServiceWorker();
+   };
+ 
+-  $('dataWhere').textContent = 'Your data is kept only in this browser on this device.';
++  // Beside cloud backup, the file buttons say they're files, so "Restore…" means the code.
++  $('backupLink').textContent = 'Save file';
++  $('importBtn').textContent = 'Open file…';
++  $('dataWhere').textContent = 'Your data is kept in this browser on this device, and encrypted in the cloud if cloud backup is on.';
+ }
+ 
+ /* ---------- saving exports ---------- */
+@@ -134,7 +142,7 @@ async function saveOrShare({ type, filename, body }) {
+ 
+ /* ---------- first run ---------- */
+ 
+-function welcome(store, saveMeta) {
++function welcome(store, saveMeta, cloudUi) {
+   const dlg = $('welcomeDlg');
+   const s = store.getSettings();
+   $('wState').innerHTML = Object.entries(STATES).map(([k, name]) => `<option value="${k}">${name}</option>`).join('');
+@@ -166,6 +174,7 @@ function welcome(store, saveMeta) {
+           defaultIn: $('wIn').value || NEW_PHONE.defaultIn,
+           defaultOut: $('wOut').value || NEW_PHONE.defaultOut,
+         });
++        if ($('wCloud').checked) await cloudUi.begin();
+         await done();
+       } catch (e) {
+         $('welcomeErr').textContent = e.message;
+@@ -173,7 +182,9 @@ function welcome(store, saveMeta) {
+     };
+ 
+     // Moving to a new phone: bring the old one's backup across instead.
+-    $('welcomeRestore').onclick = () => $('importFile').click();
++    $('welcomeRestore').onclick = async () => {
++      if (await cloudUi.restoreDialog({ file: () => $('importFile').click() })) await done();
++    };
+     const pick = async (e) => {
+       if (!dlg.open) return;
+       const f = e.target.files[0];
+@@ -186,6 +197,7 @@ function welcome(store, saveMeta) {
+         if (!backup || typeof backup.days !== 'object') throw new Error("that file isn't a backup from this app");
+         const r = await runtime.transport('POST', '/api/import', { days: backup.days, settings: backup.settings });
+         await saveMeta({ lastBackup: Date.now() });
++        if ($('wCloud').checked) await cloudUi.begin();
+         await done();
+         flash(`Restored ${r.imported} ${plural(r.imported, 'day')}`);
+       } catch (err) {
+@@ -206,7 +218,7 @@ function welcome(store, saveMeta) {
+  * Asking for persistent storage opts out where the browser allows it. The
+  * outcome is shown in Settings, so it's never a surprise.
+  */
+-async function keepData(saveMeta) {
++async function keepData(saveMeta, cloud) {
+   let kept = false;
+   try {
+     kept = (await navigator.storage?.persisted?.()) || (await navigator.storage?.persist?.()) || false;
+@@ -214,7 +226,9 @@ async function keepData(saveMeta) {
+   const onHome = matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+   const el = $('storageNote');
+   el.hidden = false;
+-  el.textContent = kept
++  el.textContent = cloud.status().on
++    ? `${kept ? 'This device keeps your data permanently, and' : 'The browser could clear this phone\'s data, but'} cloud backup has a copy: restore it with your recovery code.`
++    : kept
+     ? 'This device keeps your data permanently. A backup is still your copy if the phone is lost or reset.'
+     : onHome
+       ? 'Your data is kept on this device. Back up now and then: it\'s your only copy if the phone is lost or reset.'
+@@ -227,8 +241,11 @@ async function keepData(saveMeta) {
+  * nothing backed up, and a month after the last backup. "Later" puts it off
+  * for a week.
+  */
+-function nudge(store, saveMeta) {
++function nudge(store, saveMeta, cloud) {
+   const now = Date.now();
++  // With cloud backup on and working, there's nothing to remind about.
++  const c = cloud.status();
++  if (c.on && !c.conflict && !(c.error && c.error !== 'offline')) { $('backupNudge').hidden = true; return; }
+   const last = store.getMeta('lastBackup');
+   const since = last || store.getMeta('firstUse') || now;
+   const due = store.hasEntries() && now - since > (last ? 30 : 7) * DAY;
+diff --git a/public/styles.css b/public/styles.css
+index 8825a96..01280e8 100644
+--- a/public/styles.css
++++ b/public/styles.css
+@@ -668,3 +668,23 @@ td.stat .num, .yl-row .num, .stat-note .num { font-weight: 600; }
+ .stat-pair .stat-value, .mstats .stat-value { font-size: 26px; }
+ .mstats > .stat-block { min-width: 0; }
+ td.stat.est { font-style: italic; }
++
++/* ---------- cloud backup (standalone version) ---------- */
++.set-check { display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface-1); cursor: pointer; }
++.set-check input { width: 20px; height: 20px; margin: 2px 0 0; accent-color: var(--accent); flex: none; }
++.set-check span { display: grid; gap: 2px; font-size: 14px; }
++.set-check small { font-size: 12.5px; color: var(--text-2); line-height: 1.4; }
++.cloud { display: grid; gap: 8px; margin-bottom: 6px; }
++.cloud-status { margin: 0; font-size: 13px; line-height: 1.45; padding: 9px 12px; border-radius: 10px; background: var(--surface-2); color: var(--text-2); }
++.cloud-status b { color: var(--text-1); }
++.cloud-status.ok { background: var(--good-soft); }
++.cloud-status.warn { background: var(--warning-soft); }
++.cloud-status.bad { background: var(--critical-soft); }
++#cloudActions .danger { color: var(--critical); }
++#codeDlg, #restoreDlg { width: min(440px, calc(100vw - 24px)); }
++.code-big { margin: 4px 0; text-align: center; font: 650 clamp(17px, 5.2vw, 24px)/1.2 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; letter-spacing: .04em; padding: 14px 6px; border-radius: 12px; background: var(--surface-2); user-select: all; white-space: nowrap; }
++#codeDlg .actions { justify-content: flex-end; }
++.code-input { width: 100%; height: 46px; font: 600 18px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; letter-spacing: .06em; text-transform: uppercase; text-align: center; border: 1px solid var(--border); border-radius: 10px; background: var(--surface-2); color: var(--text-1); }
++.field-label { font-size: 12px; font-weight: 600; color: var(--text-2); }
++.linkish { justify-self: start; border: 0; background: none; padding: 0; color: var(--accent); font-size: 13px; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
++.linkish[hidden] { display: none; }
+diff --git a/scripts/service-worker.template.js b/scripts/service-worker.template.js
+index f8bd031..bc15ab1 100644
+--- a/scripts/service-worker.template.js
++++ b/scripts/service-worker.template.js
+@@ -20,6 +20,8 @@ self.addEventListener('fetch', (event) => {
+   const url = new URL(req.url);
+   const scope = new URL(self.registration.scope);
+   if (req.method !== 'GET' || url.origin !== scope.origin || !url.pathname.startsWith(scope.pathname)) return;
++  // Cloud backups always come from the network: a cached copy must never be restored.
++  if (url.pathname.startsWith(new URL('sync/', scope).pathname)) return;
+   event.respondWith((async () => {
+     const cache = await caches.open(CACHE);
+     const key = req.mode === 'navigate' ? new URL('./', scope).href : req;
+diff --git a/test/cloud.test.js b/test/cloud.test.js
+new file mode 100644
+index 0000000..e9b7b75
+--- /dev/null
++++ b/test/cloud.test.js
+@@ -0,0 +1,174 @@
++import { test } from 'node:test';
++import assert from 'node:assert/strict';
++import { handleSync } from '../worker/index.js';
++import { newCode, normaliseCode, deriveFromCode, createCloud } from '../public/local/cloud.js';
++
++/** Workers KV, in memory. */
++function memoryKV() {
++  const m = new Map();
++  return {
++    raw: m,
++    async getWithMetadata(k) { const e = m.get(k); return e ? { value: e.value, metadata: e.metadata } : { value: null, metadata: null }; },
++    async put(k, value, opts = {}) { m.set(k, { value, metadata: opts.metadata, ttl: opts.expirationTtl }); },
++    async delete(k) { m.delete(k); },
++  };
++}
++
++/** fetch() straight into the Worker. `down` simulates no signal. */
++function site(env = { BACKUPS: memoryKV() }) {
++  const net = { down: false };
++  const fetchImpl = async (url, init = {}) => {
++    if (net.down) throw new TypeError('Failed to fetch');
++    return handleSync(new Request(new URL(url, 'https://site.example'), init), env);
++  };
++  return { env, net, fetchImpl };
++}
++
++/** A phone: meta storage, some data, and its cloud engine. */
++function phone(s, data = { settings: { holidayState: 'NSW' }, days: { '2026-10-14': { code: 'O', in: '09:00', out: '17:45' } } }) {
++  const meta = new Map();
++  const store = { getMeta: (k) => meta.get(k), setMeta: (k, v) => meta.set(k, v) };
++  const ph = { data, meta };
++  ph.cloud = createCloud({ store, snapshot: async () => ph.data, fetchImpl: s.fetchImpl });
++  return ph;
++}
++
++test('recovery codes: 16 unambiguous characters in fours, and forgiving to type', () => {
++  for (let i = 0; i < 50; i++) assert.match(newCode(), /^[0-9A-HJKMNP-TV-Z]{4}(-[0-9A-HJKMNP-TV-Z]{4}){3}$/);
++  assert.equal(normaliseCode('k7qm 2xrp 9tvd 4hna'), 'K7QM-2XRP-9TVD-4HNA');
++  assert.equal(normaliseCode('K7QM-2XRP-9TVD-4HNA'), 'K7QM-2XRP-9TVD-4HNA');
++  assert.equal(normaliseCode('O0IL-2XRP-9TVD-4HNA'), '0011-2XRP-9TVD-4HNA', 'O reads as 0, I and L as 1');
++  assert.equal(normaliseCode('K7QM-2XRP-9TVD'), null);
++  assert.equal(normaliseCode('K7QM-2XRP-9TVD-4HNU'), null, 'U is not in the alphabet');
++  const seen = new Set(Array.from({ length: 200 }, newCode));
++  assert.equal(seen.size, 200);
++});
++
++test('the same code always gives the same id; different codes, different ids', async () => {
++  const a = await deriveFromCode('K7QM-2XRP-9TVD-4HNA');
++  const b = await deriveFromCode('K7QM-2XRP-9TVD-4HNA');
++  const c = await deriveFromCode('K7QM-2XRP-9TVD-4HNB');
++  assert.match(a.id, /^[0-9a-f]{64}$/);
++  assert.equal(a.id, b.id);
++  assert.notEqual(a.id, c.id);
++  assert.ok(!a.id.includes('k7qm'), 'the id gives nothing of the code away');
++});
++
++test('a backup goes up encrypted: the server holds nothing readable', async () => {
++  const s = site();
++  const a = phone(s);
++  a.cloud.adopt(newCode());
++  const st = await a.cloud.flush();
++  assert.equal(st.pending, false);
++  assert.ok(st.last);
++  const [[key, entry]] = [...s.env.BACKUPS.raw];
++  assert.match(key, /^b:[0-9a-f]{64}$/);
++  assert.ok(!entry.value.includes('2026-10-14') && !entry.value.includes('NSW') && !entry.value.includes('17:45'));
++  assert.ok(entry.ttl > 365 * 24 * 3600, 'kept for years, renewed by each backup');
++});
++
++test('a new phone restores from the code alone', async () => {
++  const s = site();
++  const a = phone(s);
++  const code = newCode();
++  a.cloud.adopt(code);
++  await a.cloud.flush();
++  const b = phone(s, null);
++  const got = await b.cloud.fetchBackup(code.toLowerCase().replace(/-/g, ' '));
++  assert.deepEqual(got.data, a.data);
++  assert.equal(got.code, code);
++  assert.ok(got.rev);
++  await assert.rejects(b.cloud.fetchBackup('ZZZZ-ZZZZ-ZZZZ-ZZZZ'), /No backup found/);
++  await assert.rejects(b.cloud.fetchBackup('not a code'), /isn't a recovery code/);
++});
++
++test('a run of changes is one upload, a few seconds after the last', async () => {
++  const s = site();
++  const a = phone(s);
++  let puts = 0;
++  const real = s.fetchImpl;
++  a.cloud = createCloud({ store: { getMeta: (k) => a.meta.get(k), setMeta: (k, v) => a.meta.set(k, v) }, snapshot: async () => a.data,
++    fetchImpl: async (u, i = {}) => { if (i.method === 'PUT') puts++; return real(u, i); } });
++  a.cloud.adopt(newCode());
++  await a.cloud.flush();
++  puts = 0;
++  a.cloud.schedule(); a.cloud.schedule(); a.cloud.schedule();
++  assert.equal(puts, 0, 'nothing yet');
++  assert.equal(a.cloud.status().pending, true);
++  await a.cloud.flush();           // what the timer does
++  assert.equal(puts, 1);
++});
++
++test('no signal: it waits, then goes when the connection is back', async () => {
++  const s = site();
++  const a = phone(s);
++  a.cloud.adopt(newCode());
++  s.net.down = true;
++  let st = await a.cloud.flush();
++  assert.equal(st.pending, true);
++  assert.equal(st.error, 'offline');
++  s.net.down = false;
++  st = await a.cloud.flush();
++  assert.equal(st.pending, false);
++  assert.equal(st.error, null);
++});
++
++test('a second device on the same code: neither silently overwrites the other', async () => {
++  const s = site();
++  const a = phone(s);
++  const code = newCode();
++  a.cloud.adopt(code);
++  await a.cloud.flush();
++  // b restores, then changes something and backs up
++  const b = phone(s, null);
++  const got = await b.cloud.fetchBackup(code);
++  b.data = { ...got.data, days: { ...got.data.days, '2026-10-15': { code: 'H' } } };
++  b.cloud.adopt(code, { rev: got.rev, last: got.updated });
++  b.cloud.schedule();
++  assert.equal((await b.cloud.flush()).pending, false);
++  // a, still on the old revision, tries to back up
++  a.cloud.schedule();
++  const st = await a.cloud.flush();
++  assert.ok(st.conflict, 'a stops and asks');
++  assert.ok((await b.cloud.fetchBackup(code)).data.days['2026-10-15'], "b's change is still there");
++  // a chooses to keep its own copy
++  const forced = await a.cloud.push({ force: true });
++  assert.equal(forced.conflict, null);
++  assert.equal((await b.cloud.fetchBackup(code)).data.days['2026-10-15'], undefined);
++});
++
++test('turning it off removes the cloud copy', async () => {
++  const s = site();
++  const a = phone(s);
++  const code = newCode();
++  a.cloud.adopt(code);
++  await a.cloud.flush();
++  await a.cloud.turnOff();
++  assert.equal(s.env.BACKUPS.raw.size, 0);
++  assert.equal(a.cloud.status().on, false);
++  await assert.rejects(a.cloud.fetchBackup(code), /No backup found/);
++});
++
++test('the Worker refuses anything that is not an encrypted backup from this site', async () => {
++  const env = { BACKUPS: memoryKV() };
++  const id = 'a'.repeat(64);
++  const call = (path, init = {}) => handleSync(new Request(`https://site.example${path}`, init), env);
++  const put = (body, headers = {}) => call(`/sync/${id}`, { method: 'PUT', headers: { 'content-type': 'application/json', 'if-match': 'new', ...headers }, body });
++  const good = JSON.stringify({ v: 1, iv: 'aaaa', ct: 'bbbb' });
++  assert.equal((await call('/sync/short')).status, 404);
++  assert.equal((await call(`/sync/${'G'.repeat(64)}`)).status, 404);
++  assert.equal((await call(`/sync/${id}`)).status, 404, 'nothing there yet');
++  assert.equal((await put(good, { 'sec-fetch-site': 'cross-site' })).status, 403);
++  assert.equal((await put(good, { 'content-type': 'text/plain' })).status, 415);
++  assert.equal((await put(good, { 'if-match': '' })).status, 428);
++  assert.equal((await put('{"days":{"2026-10-14":{"code":"O"}}}')).status, 400, 'plain data is refused');
++  assert.equal((await put('not json')).status, 400);
++  assert.equal((await put(JSON.stringify({ v: 1, iv: 'a', ct: 'x'.repeat(1024 * 1024 + 1) }))).status, 413);
++  const ok = await put(good);
++  assert.equal(ok.status, 200);
++  assert.equal((await put(good)).status, 409, "'new' when there's already one");
++  assert.equal((await call(`/sync/${id}`, { method: 'POST' })).status, 405);
++  assert.equal((await handleSync(new Request(`https://site.example/sync/${id}`), {})).status, 503, 'no KV bound: says so');
++  const got = await call(`/sync/${id}`);
++  assert.equal(got.headers.get('cache-control'), 'no-store');
++});
+diff --git a/test/standalone.test.js b/test/standalone.test.js
+index 47bc4f1..68c3bb5 100644
+--- a/test/standalone.test.js
++++ b/test/standalone.test.js
+@@ -150,6 +150,7 @@ test('the build: a static site that starts in the browser, works offline and sen
+     for (const f of ['./', 'standalone.js', 'app.js', 'core/service.js', 'local/store.js', 'js/main.js', 'lib/dates.js', 'styles.css', 'manifest.webmanifest']) {
+       assert.ok(sw.includes(`"${f}"`), `sw.js caches ${f}`);
+     }
++    assert.match(sw, /startsWith\(new URL\('sync\/', scope\)\.pathname\)\) return;/, 'cloud backups are never served from the cache');
+     const headers = readFileSync(join(out, '_headers'), 'utf8');
+     assert.match(headers, /Content-Security-Policy: default-src 'self'/);
+     assert.match(headers, /\/sw\.js\n\s+Cache-Control: no-cache/);
+@@ -159,12 +160,13 @@ test('the build: a static site that starts in the browser, works offline and sen
+   }
+ });
+ 
+-test('the Cloudflare config publishes the build output as a static site', () => {
++test('the Cloudflare config: the site from dist/, plus the backup Worker and its storage', () => {
+   const src = readFileSync(join(ROOT, 'wrangler.jsonc'), 'utf8').replace(/^\s*\/\/.*$/gm, '');
+   const cfg = JSON.parse(src);
+   assert.equal(cfg.name, 'officeattendance');
+   assert.equal(cfg.assets.directory, './dist');
+-  assert.equal(cfg.main, undefined, 'no Worker script: static files only');
++  assert.equal(cfg.main, 'worker/index.js', 'a Worker for cloud backup; everything else is static');
++  assert.deepEqual(cfg.kv_namespaces, [{ binding: 'BACKUPS' }], 'no id: created on first deploy, reused after');
+   assert.match(cfg.compatibility_date, /^\d{4}-\d\d-\d\d$/);
+ });
+ 
+diff --git a/worker/index.js b/worker/index.js
+new file mode 100644
+index 0000000..977982e
+--- /dev/null
++++ b/worker/index.js
+@@ -0,0 +1,89 @@
++/**
++ * Cloud backup for the standalone version, on Cloudflare Workers.
++ *
++ * The static site is served straight from dist/ (wrangler.jsonc, "assets").
++ * This Worker only answers /sync/<id>: it keeps one encrypted backup per
++ * recovery code in Workers KV, and nothing else.
++ *
++ * The phone encrypts before sending (public/local/cloud.js): the id is a hash
++ * derived from the recovery code, and the contents are AES-GCM with a key
++ * derived from it too. So this side never sees a code, a key or a single day
++ * of anyone's attendance - only an id and ciphertext. Whoever hosts this can't
++ * read it.
++ *
++ *   GET    /sync/<id>   the backup, or 404
++ *   PUT    /sync/<id>   store a backup. If-Match must name the revision the
++ *                       phone last saw ("new" when it expects none), so a
++ *                       second device can't silently overwrite a newer copy:
++ *                       a mismatch is 409, with the current revision.
++ *                       If-Match: * replaces whatever is there.
++ *   DELETE /sync/<id>   remove it (turning cloud backup off)
++ */
++
++const ID = /^[0-9a-f]{64}$/;
++const MAX_BYTES = 1024 * 1024;                 // a backup is ~30 KB a year; this is decades
++const KEEP_SECONDS = 3 * 365 * 24 * 3600;      // unused for three years: let it go (each backup renews it)
++
++const HEADERS = {
++  'content-type': 'application/json; charset=utf-8',
++  'cache-control': 'no-store',
++  'x-content-type-options': 'nosniff',
++  'referrer-policy': 'no-referrer',
++};
++const reply = (status, body, extra = {}) => new Response(JSON.stringify(body), { status, headers: { ...HEADERS, ...extra } });
++
++export async function handleSync(request, env) {
++  const url = new URL(request.url);
++  const m = url.pathname.match(/^\/sync\/([^/]+)$/);
++  if (!m || !ID.test(m[1])) return reply(404, { error: 'not found' });
++  if (!env.BACKUPS) return reply(503, { error: 'cloud backup is not set up on this site' });
++  // Only this site's own pages: a browser marks requests from other sites.
++  if (request.headers.get('sec-fetch-site') === 'cross-site') return reply(403, { error: 'cross-site request refused' });
++
++  const key = `b:${m[1]}`;
++  if (request.method === 'GET') {
++    const { value, metadata } = await env.BACKUPS.getWithMetadata(key);
++    if (value == null) return reply(404, { error: 'no backup for this code' });
++    return new Response(value, { status: 200, headers: { ...HEADERS, etag: `"${metadata?.rev || ''}"`, 'x-updated': String(metadata?.updated || '') } });
++  }
++
++  if (request.method === 'PUT') {
++    if ((request.headers.get('content-type') || '').split(';')[0].trim() !== 'application/json') {
++      return reply(415, { error: 'send JSON' });
++    }
++    const body = await request.text();
++    if (body.length > MAX_BYTES) return reply(413, { error: 'backup too large' });
++    let parsed;
++    try { parsed = JSON.parse(body); } catch { return reply(400, { error: 'not JSON' }); }
++    if (!parsed || parsed.v !== 1 || typeof parsed.iv !== 'string' || typeof parsed.ct !== 'string') {
++      return reply(400, { error: 'not an encrypted backup' });
++    }
++    const expect = (request.headers.get('if-match') || '').replace(/"/g, '').trim();
++    if (!expect) return reply(428, { error: 'If-Match is required' });
++    const current = await env.BACKUPS.getWithMetadata(key);
++    const currentRev = current.value == null ? 'new' : current.metadata?.rev;
++    if (expect !== '*' && expect !== currentRev) {
++      return reply(409, { error: 'the backup was changed from another device', rev: currentRev, updated: current.metadata?.updated || null });
++    }
++    const rev = `${Date.now().toString(36)}${crypto.getRandomValues(new Uint32Array(1))[0].toString(36)}`;
++    const updated = Date.now();
++    await env.BACKUPS.put(key, body, { metadata: { rev, updated, bytes: body.length }, expirationTtl: KEEP_SECONDS });
++    return reply(200, { rev, updated });
++  }
++
++  if (request.method === 'DELETE') {
++    await env.BACKUPS.delete(key);
++    return reply(200, { deleted: true });
++  }
++
++  return reply(405, { error: 'use GET, PUT or DELETE' }, { allow: 'GET, PUT, DELETE' });
++}
++
++export default {
++  async fetch(request, env) {
++    const { pathname } = new URL(request.url);
++    if (pathname.startsWith('/sync/')) return handleSync(request, env);
++    // Anything else that isn't a file of the site: let the assets answer (a 404).
++    return env.ASSETS ? env.ASSETS.fetch(request) : new Response('not found', { status: 404 });
++  },
++};
+diff --git a/wrangler.jsonc b/wrangler.jsonc
+index 71b5681..5ee1184 100644
+--- a/wrangler.jsonc
++++ b/wrangler.jsonc
+@@ -1,11 +1,19 @@
+-// Cloudflare Workers config for the standalone version: a static site, no
+-// Worker script. Cloudflare runs `npm run build:standalone`, then
+-// `npx wrangler deploy` publishes dist/. The name must match the Worker's
+-// name in the Cloudflare dashboard. See README, "The standalone version".
++// Cloudflare Workers config for the standalone version. Cloudflare runs
++// `npm run build:standalone`, then `npx wrangler deploy` publishes dist/ as
++// the site and worker/index.js for cloud backup (/sync/...). The name must
++// match the Worker's name in the Cloudflare dashboard. See README, "The
++// standalone version".
+ {
+   "name": "officeattendance",
+   "compatibility_date": "2026-09-30",
++  "main": "worker/index.js",
+   "assets": {
+-    "directory": "./dist"
+-  }
++    "directory": "./dist",
++    "binding": "ASSETS"
++  },
++  // Encrypted cloud backups. No id: the first deploy creates the KV namespace,
++  // and every deploy after that reuses it (it's already bound to the Worker).
++  "kv_namespaces": [
++    { "binding": "BACKUPS" }
++  ]
+ }

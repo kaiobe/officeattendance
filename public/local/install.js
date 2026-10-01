@@ -11,6 +11,7 @@ import { localStore } from './store.js';
 import { createService, Download } from '../core/service.js';
 import { STATES } from '../core/holidays.js';
 import { NEW_PHONE_SETTINGS } from './defaults.js';
+import { setupCloud } from './cloud-ui.js';
 import { runtime } from '../js/state.js';
 import { $, plural } from '../js/format.js';
 import { flash, attempt } from '../js/dialogs.js';
@@ -75,8 +76,11 @@ export function installLocal() {
       return out;
     });
     if (out instanceof Download) return out;
+    if (method !== 'GET') cloudUi.afterChange();
     return JSON.parse(JSON.stringify(out));
   };
+  // Cloud backup: an encrypted copy after each change (cloud.js, cloud-ui.js).
+  const cloudUi = setupCloud({ store, transport: (...a) => runtime.transport(...a) });
 
   runtime.saveRecovery = () => saveOrShare(new Download('application/json',
     `attendance-recovery-${localToday()}.json`, store.raw() || '{}'));
@@ -92,16 +96,20 @@ export function installLocal() {
   };
 
   runtime.beforeLoad = async () => {
-    if (!store.getMeta('setupDone')) await welcome(store, saveMeta);
+    if (!store.getMeta('setupDone')) await welcome(store, saveMeta, cloudUi);
   };
 
   runtime.afterLoad = () => {
-    attempt(() => keepData(saveMeta));
-    attempt(() => nudge(store, saveMeta));
+    attempt(() => keepData(saveMeta, cloudUi.cloud));
+    attempt(() => cloudUi.start());
+    attempt(() => nudge(store, saveMeta, cloudUi.cloud));
     registerServiceWorker();
   };
 
-  $('dataWhere').textContent = 'Your data is kept only in this browser on this device.';
+  // Beside cloud backup, the file buttons say they're files, so "Restore…" means the code.
+  $('backupLink').textContent = 'Save file';
+  $('importBtn').textContent = 'Open file…';
+  $('dataWhere').textContent = 'Your data is kept in this browser on this device, and encrypted in the cloud if cloud backup is on.';
 }
 
 /* ---------- saving exports ---------- */
@@ -134,7 +142,7 @@ async function saveOrShare({ type, filename, body }) {
 
 /* ---------- first run ---------- */
 
-function welcome(store, saveMeta) {
+function welcome(store, saveMeta, cloudUi) {
   const dlg = $('welcomeDlg');
   const s = store.getSettings();
   $('wState').innerHTML = Object.entries(STATES).map(([k, name]) => `<option value="${k}">${name}</option>`).join('');
@@ -166,6 +174,7 @@ function welcome(store, saveMeta) {
           defaultIn: $('wIn').value || NEW_PHONE.defaultIn,
           defaultOut: $('wOut').value || NEW_PHONE.defaultOut,
         });
+        if ($('wCloud').checked) await cloudUi.begin();
         await done();
       } catch (e) {
         $('welcomeErr').textContent = e.message;
@@ -173,7 +182,9 @@ function welcome(store, saveMeta) {
     };
 
     // Moving to a new phone: bring the old one's backup across instead.
-    $('welcomeRestore').onclick = () => $('importFile').click();
+    $('welcomeRestore').onclick = async () => {
+      if (await cloudUi.restoreDialog({ file: () => $('importFile').click() })) await done();
+    };
     const pick = async (e) => {
       if (!dlg.open) return;
       const f = e.target.files[0];
@@ -186,6 +197,7 @@ function welcome(store, saveMeta) {
         if (!backup || typeof backup.days !== 'object') throw new Error("that file isn't a backup from this app");
         const r = await runtime.transport('POST', '/api/import', { days: backup.days, settings: backup.settings });
         await saveMeta({ lastBackup: Date.now() });
+        if ($('wCloud').checked) await cloudUi.begin();
         await done();
         flash(`Restored ${r.imported} ${plural(r.imported, 'day')}`);
       } catch (err) {
@@ -206,7 +218,7 @@ function welcome(store, saveMeta) {
  * Asking for persistent storage opts out where the browser allows it. The
  * outcome is shown in Settings, so it's never a surprise.
  */
-async function keepData(saveMeta) {
+async function keepData(saveMeta, cloud) {
   let kept = false;
   try {
     kept = (await navigator.storage?.persisted?.()) || (await navigator.storage?.persist?.()) || false;
@@ -214,7 +226,9 @@ async function keepData(saveMeta) {
   const onHome = matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
   const el = $('storageNote');
   el.hidden = false;
-  el.textContent = kept
+  el.textContent = cloud.status().on
+    ? `${kept ? 'This device keeps your data permanently, and' : 'The browser could clear this phone\'s data, but'} cloud backup has a copy: restore it with your recovery code.`
+    : kept
     ? 'This device keeps your data permanently. A backup is still your copy if the phone is lost or reset.'
     : onHome
       ? 'Your data is kept on this device. Back up now and then: it\'s your only copy if the phone is lost or reset.'
@@ -227,8 +241,11 @@ async function keepData(saveMeta) {
  * nothing backed up, and a month after the last backup. "Later" puts it off
  * for a week.
  */
-function nudge(store, saveMeta) {
+function nudge(store, saveMeta, cloud) {
   const now = Date.now();
+  // With cloud backup on and working, there's nothing to remind about.
+  const c = cloud.status();
+  if (c.on && !c.conflict && !(c.error && c.error !== 'offline')) { $('backupNudge').hidden = true; return; }
   const last = store.getMeta('lastBackup');
   const since = last || store.getMeta('firstUse') || now;
   const due = store.hasEntries() && now - since > (last ? 30 : 7) * DAY;

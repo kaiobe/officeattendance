@@ -13,3 +13,6 @@ Thumbs.db
 
 # the standalone build (npm run build:standalone)
 dist/
+
+# wrangler dev's local state
+.wrangler/

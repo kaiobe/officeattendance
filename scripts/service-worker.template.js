@@ -20,6 +20,8 @@ self.addEventListener('fetch', (event) => {
   const url = new URL(req.url);
   const scope = new URL(self.registration.scope);
   if (req.method !== 'GET' || url.origin !== scope.origin || !url.pathname.startsWith(scope.pathname)) return;
+  // Cloud backups always come from the network: a cached copy must never be restored.
+  if (url.pathname.startsWith(new URL('sync/', scope).pathname)) return;
   event.respondWith((async () => {
     const cache = await caches.open(CACHE);
     const key = req.mode === 'navigate' ? new URL('./', scope).href : req;

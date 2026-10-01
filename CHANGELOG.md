@@ -10,6 +10,26 @@ Versions are `MAJOR.MINOR.PATCH`:
 `npm run bump [major|minor|patch]` moves the number in every place it appears
 and opens an entry here. Nothing else should edit a version by hand.
 
+## 1.13.0 - 2026-10-01
+
+- **Cloud backup for the standalone version.** Each phone backs itself up, encrypted,
+  a few seconds after every change. No account: setup shows a recovery code
+  (`XXXX-XXXX-XXXX-XXXX`) once, and that code restores everything on a new phone.
+  - The code stays on the phone. It makes both the backup's id and its AES-256 key, so
+    only encrypted data is ever sent, and no one else can read it.
+  - With no signal it waits, says so in Settings, and sends when the connection's back.
+    It also sends as the app goes to the background.
+  - Two phones on one code never overwrite each other silently: the second is asked
+    whether to use the cloud copy or keep its own.
+  - Settings › Backup shows whether it's on and when it last backed up, with
+    **Show code**, **Restore…** and **Turn off** (which deletes the cloud copy).
+  - It's ticked on the setup screen; untick it to keep everything on the phone.
+- **The file backup stays**, now labelled **Save file** and **Open file…** in the
+  standalone version, so **Restore…** clearly means the code. The backup reminder only
+  appears when cloud backup is off or failing.
+- **Cloudflare:** a small Worker (`worker/index.js`) now runs beside the static site and
+  keeps the backups in a KV namespace, created on the first deploy. Nothing to set up.
+
 ## 1.12.0 - 2026-10-01
 
 - **Confirmed monthly rules.** Both days and hours use Office + Home days. The hours

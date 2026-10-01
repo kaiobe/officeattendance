@@ -1,11 +1,19 @@
-// Cloudflare Workers config for the standalone version: a static site, no
-// Worker script. Cloudflare runs `npm run build:standalone`, then
-// `npx wrangler deploy` publishes dist/. The name must match the Worker's
-// name in the Cloudflare dashboard. See README, "The standalone version".
+// Cloudflare Workers config for the standalone version. Cloudflare runs
+// `npm run build:standalone`, then `npx wrangler deploy` publishes dist/ as
+// the site and worker/index.js for cloud backup (/sync/...). The name must
+// match the Worker's name in the Cloudflare dashboard. See README, "The
+// standalone version".
 {
   "name": "officeattendance",
   "compatibility_date": "2026-09-30",
+  "main": "worker/index.js",
   "assets": {
-    "directory": "./dist"
-  }
+    "directory": "./dist",
+    "binding": "ASSETS"
+  },
+  // Encrypted cloud backups. No id: the first deploy creates the KV namespace,
+  // and every deploy after that reuses it (it's already bound to the Worker).
+  "kv_namespaces": [
+    { "binding": "BACKUPS" }
+  ]
 }
