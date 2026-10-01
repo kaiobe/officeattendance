@@ -30,7 +30,7 @@ function gapCell(gap, basis, fmt = fmtNum, extra = '') {
 }
 
 function dayCols() {
-  return ['Work', 'Office', '%', `vs ${Math.round(S.settings.officeReqPct * 100)}%`];
+  return ['Work', 'Office', '%'];
 }
 function hourCols(all) {
   return all ? ['Office', 'Avail', 'H%', 'Req', 'Gap', 'Avg', 'Timed'] : ['Office', 'H%', 'Gap'];
@@ -39,8 +39,7 @@ function hourCols(all) {
 function dayStatCells(m) {
   return `<td class="stat">${m.workDays || '—'}</td>
     <td class="stat">${m.officeDays || '—'}</td>
-    <td class="stat">${m.pctDays == null ? '—' : pct(m.pctDays) + '%'}</td>
-    ${gapCell(m.gapDays, m.workDays, fmtNum, ' data-col="vs"').replace('<td class="stat"', '<td class="stat endgroup"')}`;
+    <td class="stat endgroup">${m.pctDays == null ? '—' : pct(m.pctDays) + '%'}</td>`;
 }
 
 /**
@@ -172,21 +171,34 @@ export function renderGridNote() {
  * The phone's Year tab: one row per month instead of the 31-column grid.
  * Tapping a month opens it in the month view.
  */
-/** The year list's hours column: hours ahead (+) or short (−) of the target, plans included. */
-function hoursCell(m) {
-  if (!m.workDays) return '<span>—</span>';
-  return `<span${m.untimedPastOfficeDays ? ' class="flag"' : ''}>${signedHtml(-m.projGapHrs, fmtHrs2)}</span>`;
+/**
+ * The year list's hour columns, planned hours included: the share of hours in
+ * the office, and hours ahead (+) or short (−) of the target. An amber mark
+ * while some office days so far have no times.
+ */
+function hourCells(m) {
+  if (!m.workDays) return ['<span>—</span>', '<span>—</span>'];
+  const flag = m.untimedPastOfficeDays ? ' class="flag"' : '';
+  return [
+    `<span${flag}>${m.projPctHrs == null ? '—' : pct(m.projPctHrs) + '%'}</span>`,
+    `<span${flag}>${signedHtml(-m.projGapHrs, fmtHrs2)}</span>`,
+  ];
 }
 
 export function renderYearList(onPickMonth) {
   const req = Math.round(S.settings.officeReqPct * 100);
-  const row = (m, label) => `<span class="m">${label}</span>
+  // Office days and office hours as a share, then days and hours against the target.
+  const row = (m, label) => {
+    const [hpct, hgap] = hourCells(m);
+    return `<span class="m">${label}</span>
       <span>${m.pctDays == null ? '—' : pct(m.pctDays) + '%'}</span>
+      ${hpct}
       <span>${m.workDays ? signedHtml(-m.gapDays) : '—'}</span>
-      ${hoursCell(m)}`;
+      ${hgap}`;
+  };
   $('yearList').innerHTML =
-    `<p class="yl-note">Days and hours against the ${req}% target, plans included</p>`
-    + `<div class="yl-row yl-head"><span class="m">Month</span><span>Office</span><span>Days</span><span>Hours</span></div>`
+    `<p class="yl-note">Share of days and hours in the office, and days and hours against the ${req}% target, incl. planned</p>`
+    + `<div class="yl-row yl-head"><span class="m">Month</span><span title="Office days as a share of work days">Office D.</span><span title="Office hours as a share of available hours">Office H.</span><span title="Office days ahead (+) or short (−) of the target">Days</span><span title="Office hours ahead (+) or short (−) of the target">Hours</span></div>`
     + S.summary.months.map((m, i) => `<button class="yl-row" data-i="${i}" aria-label="Open ${m.name} ${m.year}">${row(m, `${m.name.slice(0, 3)} ${String(m.year).slice(2)}`)}</button>`).join('')
     + `<div class="yl-row yl-total">${row(S.summary.total, `FY${S.fy}`)}</div>`;
   $('yearList').querySelectorAll('button[data-i]').forEach((b) => { b.onclick = () => onPickMonth(Number(b.dataset.i)); });

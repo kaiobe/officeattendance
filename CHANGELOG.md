@@ -10,6 +10,16 @@ Versions are `MAJOR.MINOR.PATCH`:
 `npm run bump [major|minor|patch]` moves the number in every place it appears
 and opens an entry here. Nothing else should edit a version by hand.
 
+## 1.15.0 - 2026-10-01
+
+- **Grid:** the *vs 50%* day column is gone. The office **%** beside it already says it.
+- **Phone Year tab:** four columns. **Office D.** (office days as a % of work days),
+  **Office H.** (office hours as a % of available hours), **Days** and **Hours** (ahead
+  or short of the target). Planned days are included, as before. The headers give the
+  meaning on hover, and the list fits phones down to 320px wide.
+- **Wording:** *incl. plans* is now *incl. planned*, and the *Day length* card is
+  *Average day length*.
+
 ## 1.14.0 - 2026-10-01
 
 - **Restore with a passkey.** Cloud backup can now be unlocked with Face ID or a

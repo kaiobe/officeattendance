@@ -41,7 +41,7 @@ export function daysStat(s, req, { label = 'Office days' } = {}) {
   const sg = signed(surplus);
   return block({
     label,
-    tag: s.futureWorkDays ? 'incl. plans' : '',
+    tag: s.futureWorkDays ? 'incl. planned' : '',
     value: `${pct(s.pctDays)}<span class="unit">%</span>`,
     chip: `<span class="chip-delta ${sg.cls}" title="Office days ahead (+) or short (−) of ${Math.round(req * 100)}%">${sg.text} d</span>`,
     sub: `${fmtNum(s.officeDays)} of ${fmtNum(s.workDays)} days · target ${fmtNum(s.requiredOfficeDays)}`,
@@ -58,7 +58,7 @@ export function daysStat(s, req, { label = 'Office days' } = {}) {
 export function hoursStat(s, req, std, { plans = false, label = 'Office hours' } = {}) {
   const work = plans ? s.workDays : s.pastWorkDays;
   const hasPlans = plans && s.plannedWorkDays > 0;
-  const tag = hasPlans ? 'incl. plans' : '';
+  const tag = hasPlans ? 'incl. planned' : '';
   const why = `Office hours ahead (+) or short (−) of ${Math.round(req * 100)}% × (Office + Home days) × a ${fmtHrs(std)} h standard day`
     + (hasPlans ? ', counting the hours planned on days still to come' : ' to date');
   if (!work) return block({ label, tag, value: '—', sub: 'No work days yet', meter: bar(0, req, 'idle'), title: why });
@@ -81,8 +81,8 @@ export function hoursStat(s, req, std, { plans = false, label = 'Office hours' }
   });
 }
 
-/** Day length: background information, so no bar and no colour. */
-export function dayLengthStat(s, std, { label = 'Day length' } = {}) {
+/** Average day length: background information, so no bar and no colour. */
+export function dayLengthStat(s, std, { label = 'Average day length' } = {}) {
   const avg = s.pastAvgHrsPerOfficeDay;
   if (avg == null) return block({ label, value: '—', sub: `No office times yet · std ${fmtHrs(std)} h` });
   const d = signed(avg - std, fmtHrs2);
@@ -90,7 +90,7 @@ export function dayLengthStat(s, std, { label = 'Day length' } = {}) {
     label,
     value: `${fmtHrs2(avg)}<span class="unit">h</span>`,
     chip: `<span class="chip-delta zero" title="Against the standard ${fmtHrs(std)} h day">${d.text}</span>`,
-    sub: `avg of ${s.pastTimedOfficeDays} completed ${plural(s.pastTimedOfficeDays, 'day')} · std ${fmtHrs(std)} h`,
+    sub: `${s.pastTimedOfficeDays} completed ${plural(s.pastTimedOfficeDays, 'day')} · std ${fmtHrs(std)} h`,
   });
 }
 

@@ -1,0 +1,224 @@
+diff --git a/CHANGELOG.md b/CHANGELOG.md
+index bec7ac0..a91a843 100644
+--- a/CHANGELOG.md
++++ b/CHANGELOG.md
+@@ -10,6 +10,16 @@ Versions are `MAJOR.MINOR.PATCH`:
+ `npm run bump [major|minor|patch]` moves the number in every place it appears
+ and opens an entry here. Nothing else should edit a version by hand.
+ 
++## 1.15.0 - 2026-10-01
++
++- **Grid:** the *vs 50%* day column is gone. The office **%** beside it already says it.
++- **Phone Year tab:** four columns. **Office D.** (office days as a % of work days),
++  **Office H.** (office hours as a % of available hours), **Days** and **Hours** (ahead
++  or short of the target). Planned days are included, as before. The headers give the
++  meaning on hover, and the list fits phones down to 320px wide.
++- **Wording:** *incl. plans* is now *incl. planned*, and the *Day length* card is
++  *Average day length*.
++
+ ## 1.14.0 - 2026-10-01
+ 
+ - **Restore with a passkey.** Cloud backup can now be unlocked with Face ID or a
+diff --git a/README.md b/README.md
+index e1343bc..a05e9e3 100644
+--- a/README.md
++++ b/README.md
+@@ -279,7 +279,7 @@ average office day is still there, but as background.
+ 
+ **Planning ahead.** Codes and times entered on days still to come are your plan. The month
+ views (the phone's Month tab, the desktop tiles' **Month** and **Full year**) and the grid
+-count them: hours ahead or short if the plan holds. The cards are tagged *incl. plans*,
++count them: hours ahead or short if the plan holds. The cards are tagged *incl. planned*,
+ with the planned hours and where you stand today in the note. A planned office day with
+ no times counts as a standard day. The Today card, **Month to date** and **Year to date**
+ stay on days to date.
+@@ -287,7 +287,8 @@ stay on days to date.
+ Ahead and short are a sign and a colour everywhere: **+3.25** in green is ahead,
+ **−11.63** in red is short. Hover a card for what the number means.
+ 
+-The grid fits the page at 1280px and wider. Under *Hours* it shows Office, **H%** and
++The grid fits the page at 1280px and wider. Under *Days* it shows Work, Office and the
++office **%**. Under *Hours* it shows Office, **H%** and
+ **Gap**. Like the day columns, they count everything entered, hours planned ahead
+ included. A planned office day with no times counts as a standard day, and totals that
+ include one are in *italics*. An amber dot means some past office days have no times;
+@@ -297,7 +298,7 @@ its card, and the choice is kept for this browser.
+ 
+ **The cards** all share one layout: a label, one number, one line of figures and a bar.
+ Office days shows the percentage with the days ahead or short beside it. Office hours
+-shows the hours ahead or short. Day length shows the average office day against the
++shows the hours ahead or short. Average day length shows the average office day against the
+ standard.
+ 
+ ### On a phone
+@@ -313,8 +314,10 @@ The page splits into three tabs along the bottom:
+   **Select** picks a range by touch: tap the first day, then the last, then a code in the
+   sheet that slides up. As with Shift-click, only work days change. Weekends, holidays and
+   your non-working day are hatched and left alone.
+-- **Year** — the tiles and one row per month in place of the 31-column grid: office %,
+-  days against the target, and hours against it. Tap a month to open it in the Month tab.
++- **Year** — the tiles and one row per month in place of the 31-column grid: **Office D.**
++  (office days as a % of work days), **Office H.** (office hours as a % of available
++  hours), then **Days** and **Hours** ahead or short of the target, planned days included.
++  Tap a month to open it in the Month tab.
+ 
+ The date heading is the date picker: tap it to choose a day. *Today* only appears when
+ you're on another day.
+diff --git a/package.json b/package.json
+index ff46d04..787fd14 100644
+--- a/package.json
++++ b/package.json
+@@ -1,6 +1,6 @@
+ {
+   "name": "office-attendance",
+-  "version": "1.14.0",
++  "version": "1.15.0",
+   "private": true,
+   "type": "module",
+   "description": "Self-hosted office attendance tracker (days + hours) for an Oct-Sep financial year",
+diff --git a/public/app.js b/public/app.js
+index 3fa15fb..bf5bf58 100644
+--- a/public/app.js
++++ b/public/app.js
+@@ -11,6 +11,6 @@
+  */
+ import { boot } from './js/main.js';
+ 
+-const APP_VERSION = '1.14.0';
++const APP_VERSION = '1.15.0';
+ 
+ boot(APP_VERSION);
+diff --git a/public/js/grid.js b/public/js/grid.js
+index e66f154..87e7260 100644
+--- a/public/js/grid.js
++++ b/public/js/grid.js
+@@ -30,7 +30,7 @@ function gapCell(gap, basis, fmt = fmtNum, extra = '') {
+ }
+ 
+ function dayCols() {
+-  return ['Work', 'Office', '%', `vs ${Math.round(S.settings.officeReqPct * 100)}%`];
++  return ['Work', 'Office', '%'];
+ }
+ function hourCols(all) {
+   return all ? ['Office', 'Avail', 'H%', 'Req', 'Gap', 'Avg', 'Timed'] : ['Office', 'H%', 'Gap'];
+@@ -39,8 +39,7 @@ function hourCols(all) {
+ function dayStatCells(m) {
+   return `<td class="stat">${m.workDays || '—'}</td>
+     <td class="stat">${m.officeDays || '—'}</td>
+-    <td class="stat">${m.pctDays == null ? '—' : pct(m.pctDays) + '%'}</td>
+-    ${gapCell(m.gapDays, m.workDays, fmtNum, ' data-col="vs"').replace('<td class="stat"', '<td class="stat endgroup"')}`;
++    <td class="stat endgroup">${m.pctDays == null ? '—' : pct(m.pctDays) + '%'}</td>`;
+ }
+ 
+ /**
+@@ -172,21 +171,34 @@ export function renderGridNote() {
+  * The phone's Year tab: one row per month instead of the 31-column grid.
+  * Tapping a month opens it in the month view.
+  */
+-/** The year list's hours column: hours ahead (+) or short (−) of the target, plans included. */
+-function hoursCell(m) {
+-  if (!m.workDays) return '<span>—</span>';
+-  return `<span${m.untimedPastOfficeDays ? ' class="flag"' : ''}>${signedHtml(-m.projGapHrs, fmtHrs2)}</span>`;
++/**
++ * The year list's hour columns, planned hours included: the share of hours in
++ * the office, and hours ahead (+) or short (−) of the target. An amber mark
++ * while some office days so far have no times.
++ */
++function hourCells(m) {
++  if (!m.workDays) return ['<span>—</span>', '<span>—</span>'];
++  const flag = m.untimedPastOfficeDays ? ' class="flag"' : '';
++  return [
++    `<span${flag}>${m.projPctHrs == null ? '—' : pct(m.projPctHrs) + '%'}</span>`,
++    `<span${flag}>${signedHtml(-m.projGapHrs, fmtHrs2)}</span>`,
++  ];
+ }
+ 
+ export function renderYearList(onPickMonth) {
+   const req = Math.round(S.settings.officeReqPct * 100);
+-  const row = (m, label) => `<span class="m">${label}</span>
++  // Office days and office hours as a share, then days and hours against the target.
++  const row = (m, label) => {
++    const [hpct, hgap] = hourCells(m);
++    return `<span class="m">${label}</span>
+       <span>${m.pctDays == null ? '—' : pct(m.pctDays) + '%'}</span>
++      ${hpct}
+       <span>${m.workDays ? signedHtml(-m.gapDays) : '—'}</span>
+-      ${hoursCell(m)}`;
++      ${hgap}`;
++  };
+   $('yearList').innerHTML =
+-    `<p class="yl-note">Days and hours against the ${req}% target, plans included</p>`
+-    + `<div class="yl-row yl-head"><span class="m">Month</span><span>Office</span><span>Days</span><span>Hours</span></div>`
++    `<p class="yl-note">Share of days and hours in the office, and days and hours against the ${req}% target, incl. planned</p>`
++    + `<div class="yl-row yl-head"><span class="m">Month</span><span title="Office days as a share of work days">Office D.</span><span title="Office hours as a share of available hours">Office H.</span><span title="Office days ahead (+) or short (−) of the target">Days</span><span title="Office hours ahead (+) or short (−) of the target">Hours</span></div>`
+     + S.summary.months.map((m, i) => `<button class="yl-row" data-i="${i}" aria-label="Open ${m.name} ${m.year}">${row(m, `${m.name.slice(0, 3)} ${String(m.year).slice(2)}`)}</button>`).join('')
+     + `<div class="yl-row yl-total">${row(S.summary.total, `FY${S.fy}`)}</div>`;
+   $('yearList').querySelectorAll('button[data-i]').forEach((b) => { b.onclick = () => onPickMonth(Number(b.dataset.i)); });
+diff --git a/public/js/stat.js b/public/js/stat.js
+index 11b5ce8..4e9ec32 100644
+--- a/public/js/stat.js
++++ b/public/js/stat.js
+@@ -41,7 +41,7 @@ export function daysStat(s, req, { label = 'Office days' } = {}) {
+   const sg = signed(surplus);
+   return block({
+     label,
+-    tag: s.futureWorkDays ? 'incl. plans' : '',
++    tag: s.futureWorkDays ? 'incl. planned' : '',
+     value: `${pct(s.pctDays)}<span class="unit">%</span>`,
+     chip: `<span class="chip-delta ${sg.cls}" title="Office days ahead (+) or short (−) of ${Math.round(req * 100)}%">${sg.text} d</span>`,
+     sub: `${fmtNum(s.officeDays)} of ${fmtNum(s.workDays)} days · target ${fmtNum(s.requiredOfficeDays)}`,
+@@ -58,7 +58,7 @@ export function daysStat(s, req, { label = 'Office days' } = {}) {
+ export function hoursStat(s, req, std, { plans = false, label = 'Office hours' } = {}) {
+   const work = plans ? s.workDays : s.pastWorkDays;
+   const hasPlans = plans && s.plannedWorkDays > 0;
+-  const tag = hasPlans ? 'incl. plans' : '';
++  const tag = hasPlans ? 'incl. planned' : '';
+   const why = `Office hours ahead (+) or short (−) of ${Math.round(req * 100)}% × (Office + Home days) × a ${fmtHrs(std)} h standard day`
+     + (hasPlans ? ', counting the hours planned on days still to come' : ' to date');
+   if (!work) return block({ label, tag, value: '—', sub: 'No work days yet', meter: bar(0, req, 'idle'), title: why });
+@@ -81,8 +81,8 @@ export function hoursStat(s, req, std, { plans = false, label = 'Office hours' }
+   });
+ }
+ 
+-/** Day length: background information, so no bar and no colour. */
+-export function dayLengthStat(s, std, { label = 'Day length' } = {}) {
++/** Average day length: background information, so no bar and no colour. */
++export function dayLengthStat(s, std, { label = 'Average day length' } = {}) {
+   const avg = s.pastAvgHrsPerOfficeDay;
+   if (avg == null) return block({ label, value: '—', sub: `No office times yet · std ${fmtHrs(std)} h` });
+   const d = signed(avg - std, fmtHrs2);
+@@ -90,7 +90,7 @@ export function dayLengthStat(s, std, { label = 'Day length' } = {}) {
+     label,
+     value: `${fmtHrs2(avg)}<span class="unit">h</span>`,
+     chip: `<span class="chip-delta zero" title="Against the standard ${fmtHrs(std)} h day">${d.text}</span>`,
+-    sub: `avg of ${s.pastTimedOfficeDays} completed ${plural(s.pastTimedOfficeDays, 'day')} · std ${fmtHrs(std)} h`,
++    sub: `${s.pastTimedOfficeDays} completed ${plural(s.pastTimedOfficeDays, 'day')} · std ${fmtHrs(std)} h`,
+   });
+ }
+ 
+diff --git a/public/styles.css b/public/styles.css
+index a173f0d..f6846e0 100644
+--- a/public/styles.css
++++ b/public/styles.css
+@@ -403,15 +403,18 @@ a { color: var(--accent); }
+ /* ---------- year by month (phone, Year tab) ---------- */
+ .yearlist { padding: 2px 16px 12px; }
+ .yl-row {
+-  display: grid; grid-template-columns: 58px minmax(0, .8fr) minmax(0, 1fr) minmax(0, 1.25fr); align-items: center; gap: 6px;
++  display: grid; grid-template-columns: 56px repeat(2, minmax(0, 1fr)) minmax(0, .8fr) minmax(0, 1.05fr); align-items: center; gap: 6px;
+   width: 100%; min-height: 44px; padding: 0; border: 0; border-top: 1px solid var(--border); background: none;
+   font-size: 14px; text-align: right; font-variant-numeric: tabular-nums; color: var(--text-1);
+ }
+ .yl-row .m { text-align: left; font-weight: 600; color: var(--text-2); }
+ .yl-row > span { white-space: nowrap; }
+ .yl-note { margin: 6px 0 4px; font-size: 12px; color: var(--text-3-strong); }
+-@media (max-width: 380px) { .yl-row { font-size: 13px; gap: 4px; } }
+-.yl-head { min-height: 30px; border-top: 0; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; color: var(--text-3-strong); }
++@media (max-width: 380px) { .yl-row { font-size: 13px; gap: 4px; grid-template-columns: 50px repeat(2, minmax(0, 1fr)) minmax(0, .75fr) minmax(0, 1.1fr); } }
++@media (max-width: 340px) { .yl-row { font-size: 12px; gap: 3px; grid-template-columns: 50px repeat(2, minmax(0, 1fr)) minmax(0, .65fr) minmax(0, 1.05fr); } .yearlist { padding-inline: 10px; } }
++.yl-head { min-height: 30px; border-top: 0; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .03em; color: var(--text-3-strong); }
++/* very narrow phones: a header may take two lines rather than run into the next */
++.yl-head > span { white-space: normal; line-height: 1.15; }
+ .yl-total { font-weight: 680; }
+ .gap-ok-t { color: var(--good-text); font-weight: 600; }
+ .gap-short-t { color: var(--critical); font-weight: 600; }

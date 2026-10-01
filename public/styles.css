@@ -403,15 +403,18 @@ a { color: var(--accent); }
 /* ---------- year by month (phone, Year tab) ---------- */
 .yearlist { padding: 2px 16px 12px; }
 .yl-row {
-  display: grid; grid-template-columns: 58px minmax(0, .8fr) minmax(0, 1fr) minmax(0, 1.25fr); align-items: center; gap: 6px;
+  display: grid; grid-template-columns: 56px repeat(2, minmax(0, 1fr)) minmax(0, .8fr) minmax(0, 1.05fr); align-items: center; gap: 6px;
   width: 100%; min-height: 44px; padding: 0; border: 0; border-top: 1px solid var(--border); background: none;
   font-size: 14px; text-align: right; font-variant-numeric: tabular-nums; color: var(--text-1);
 }
 .yl-row .m { text-align: left; font-weight: 600; color: var(--text-2); }
 .yl-row > span { white-space: nowrap; }
 .yl-note { margin: 6px 0 4px; font-size: 12px; color: var(--text-3-strong); }
-@media (max-width: 380px) { .yl-row { font-size: 13px; gap: 4px; } }
-.yl-head { min-height: 30px; border-top: 0; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; color: var(--text-3-strong); }
+@media (max-width: 380px) { .yl-row { font-size: 13px; gap: 4px; grid-template-columns: 50px repeat(2, minmax(0, 1fr)) minmax(0, .75fr) minmax(0, 1.1fr); } }
+@media (max-width: 340px) { .yl-row { font-size: 12px; gap: 3px; grid-template-columns: 50px repeat(2, minmax(0, 1fr)) minmax(0, .65fr) minmax(0, 1.05fr); } .yearlist { padding-inline: 10px; } }
+.yl-head { min-height: 30px; border-top: 0; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .03em; color: var(--text-3-strong); }
+/* very narrow phones: a header may take two lines rather than run into the next */
+.yl-head > span { white-space: normal; line-height: 1.15; }
 .yl-total { font-weight: 680; }
 .gap-ok-t { color: var(--good-text); font-weight: 600; }
 .gap-short-t { color: var(--critical); font-weight: 600; }

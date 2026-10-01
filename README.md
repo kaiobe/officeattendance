@@ -279,7 +279,7 @@ average office day is still there, but as background.
 
 **Planning ahead.** Codes and times entered on days still to come are your plan. The month
 views (the phone's Month tab, the desktop tiles' **Month** and **Full year**) and the grid
-count them: hours ahead or short if the plan holds. The cards are tagged *incl. plans*,
+count them: hours ahead or short if the plan holds. The cards are tagged *incl. planned*,
 with the planned hours and where you stand today in the note. A planned office day with
 no times counts as a standard day. The Today card, **Month to date** and **Year to date**
 stay on days to date.
@@ -287,7 +287,8 @@ stay on days to date.
 Ahead and short are a sign and a colour everywhere: **+3.25** in green is ahead,
 **−11.63** in red is short. Hover a card for what the number means.
 
-The grid fits the page at 1280px and wider. Under *Hours* it shows Office, **H%** and
+The grid fits the page at 1280px and wider. Under *Days* it shows Work, Office and the
+office **%**. Under *Hours* it shows Office, **H%** and
 **Gap**. Like the day columns, they count everything entered, hours planned ahead
 included. A planned office day with no times counts as a standard day, and totals that
 include one are in *italics*. An amber dot means some past office days have no times;
@@ -297,7 +298,7 @@ its card, and the choice is kept for this browser.
 
 **The cards** all share one layout: a label, one number, one line of figures and a bar.
 Office days shows the percentage with the days ahead or short beside it. Office hours
-shows the hours ahead or short. Day length shows the average office day against the
+shows the hours ahead or short. Average day length shows the average office day against the
 standard.
 
 ### On a phone
@@ -313,8 +314,10 @@ The page splits into three tabs along the bottom:
   **Select** picks a range by touch: tap the first day, then the last, then a code in the
   sheet that slides up. As with Shift-click, only work days change. Weekends, holidays and
   your non-working day are hatched and left alone.
-- **Year** — the tiles and one row per month in place of the 31-column grid: office %,
-  days against the target, and hours against it. Tap a month to open it in the Month tab.
+- **Year** — the tiles and one row per month in place of the 31-column grid: **Office D.**
+  (office days as a % of work days), **Office H.** (office hours as a % of available
+  hours), then **Days** and **Hours** ahead or short of the target, planned days included.
+  Tap a month to open it in the Month tab.
 
 The date heading is the date picker: tap it to choose a day. *Today* only appears when
 you're on another day.
