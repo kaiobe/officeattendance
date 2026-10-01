@@ -420,7 +420,9 @@ today, and anything you've logged, stay as they were. Changing the non-working d
 moves NW days the same way.
 
 Custom notes on non-working days and holidays preserve those records during a calendar
-change. Automatically generated holiday names are recognised as calendar text.
+change. Automatically generated holiday names are recognised as calendar text. A public
+holiday with no note at all (from the spreadsheet import, or laid out before names were
+written) is given its name when the server starts.
 
 Every state and territory is checked against the Fair Work Ombudsman's 2026 and 2027
 lists. Victoria is also checked against Business Victoria's lists for 2025 to 2028, and

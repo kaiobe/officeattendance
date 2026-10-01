@@ -10,6 +10,13 @@ Versions are `MAJOR.MINOR.PATCH`:
 `npm run bump [major|minor|patch]` moves the number in every place it appears
 and opens an entry here. Nothing else should edit a version by hand.
 
+## 1.17.3 - 2026-10-01
+
+- **Holiday names everywhere.** Public holidays that came from the spreadsheet import, or
+  were laid out before names were written, had no note. On start-up the app now names
+  any public holiday whose note is empty (Melbourne Cup Day, Christmas Day…), as new
+  calendars already do. Codes, times and your own notes are never touched.
+
 ## 1.17.2 - 2026-10-01
 
 - **Phone Month tab key:** *weekend* is gone (weekends already show W), and *still to

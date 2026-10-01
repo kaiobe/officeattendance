@@ -183,4 +183,28 @@ export function tidyYears(store, span) {
   return removed;
 }
 
+/**
+ * Give public holidays with no note their holiday's name, as the calendar does
+ * when it lays a year out. Days that came from the spreadsheet import, or were
+ * laid out before names were written, have none. Only a PH day with an empty
+ * note that falls on one of the state's holidays is touched; codes, times and
+ * anyone's own notes never are. Returns how many were named.
+ */
+export function nameHolidays(store, settings) {
+  const blank = store.getDaySummaries().filter((r) => r.code === 'PH' && !r.comment && isRealDate(r.date));
+  if (!blank.length) return 0;
+  const dates = blank.map((r) => r.date).sort();
+  const holidays = holidaysBetween(dates[0], dates.at(-1), settings.holidayState);
+  let named = 0;
+  store.transaction(() => {
+    for (const r of blank) {
+      const h = holidays[r.date];
+      if (!h) continue;
+      store.upsertDay(r.date, { code: 'PH', in: r.in_time || null, out: r.out_time || null, comment: h.name });
+      named++;
+    }
+  });
+  return named;
+}
+
 export { fyMonths, daysInMonth, iso };

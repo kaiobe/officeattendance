@@ -6,7 +6,7 @@ import { createServer } from 'node:http';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { openDb, getSettings, seedIfEmpty, sqliteStore } from './db.js';
-import { yearSpan, tidyYears } from '../public/core/calendar.js';
+import { yearSpan, tidyYears, nameHolidays } from '../public/core/calendar.js';
 import { VERSION, versionDrift } from './version.js';
 import { createApp } from './app.js';
 
@@ -33,6 +33,8 @@ if (drift) console.warn(`Version mismatch: ${drift}`);
 const store = sqliteStore(db);
 const removed = tidyYears(store, yearSpan(store, getSettings(db), today()));
 if (removed) console.log(`Removed ${removed} unused calendar days from financial years outside the app's range.`);
+const named = nameHolidays(store, getSettings(db));
+if (named) console.log(`Named ${named} public holidays that had no note.`);
 
 const server = createServer(createApp({ db, today, tz: TZ }));
 server.listen(PORT, () => console.log(`Office attendance v${VERSION} on http://0.0.0.0:${PORT}  (db: ${DB_FILE}, tz: ${TZ}${PINNED ? `, date pinned to ${PINNED}` : ''})`));

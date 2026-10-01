@@ -118,3 +118,32 @@ test('the Ekka moves to the second Friday week when August starts late in the we
   // 2028: the first Friday is the 4th, before the 5th, so the show opens on the 11th
   assert.ok(publicHolidays(2028, 'QLD').some((h) => h.date === '2028-08-16' && h.name.startsWith('Royal Queensland Show')));
 });
+
+test('public holidays with no note get their name; codes, times and own notes are left alone', async () => {
+  const { openDb, sqliteStore } = await import('../server/db.js');
+  const { nameHolidays } = await import('../public/core/calendar.js');
+  const { mkdtempSync, rmSync } = await import('node:fs');
+  const { join } = await import('node:path');
+  const { tmpdir } = await import('node:os');
+  const dir = mkdtempSync(join(tmpdir(), 'names-'));
+  try {
+    const db = openDb(join(dir, 'a.db'));
+    const store = sqliteStore(db);
+    store.upsertDay('2026-11-03', { code: 'PH' });                                   // Melbourne Cup, no note (as imported)
+    store.upsertDay('2026-12-25', { code: 'PH', in: '09:00', out: '12:00' });        // Christmas, worked a bit
+    store.upsertDay('2026-12-26', { code: 'PH', comment: 'family lunch' });          // someone's own note
+    store.upsertDay('2026-12-28', { code: 'O' });                                    // worked the holiday
+    store.upsertDay('2026-10-14', { code: 'PH' });                                   // not a Victorian holiday
+    assert.equal(nameHolidays(store, { holidayState: 'VIC' }), 2);
+    const d = store.getAllDays();
+    assert.equal(d['2026-11-03'].comment, 'Melbourne Cup Day');
+    assert.equal(d['2026-11-03'].code, 'PH');
+    assert.equal(d['2026-12-25'].comment, 'Christmas Day');
+    assert.equal(d['2026-12-25'].in, '09:00', 'times kept');
+    assert.equal(d['2026-12-26'].comment, 'family lunch');
+    assert.equal(d['2026-12-28'].comment, null);
+    assert.equal(d['2026-10-14'].comment, null);
+    assert.equal(nameHolidays(store, { holidayState: 'VIC' }), 0, 'nothing left to do the second time');
+    db.close();
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
