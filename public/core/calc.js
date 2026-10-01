@@ -20,7 +20,11 @@ const round2 = (n) => Math.round(n * 100) / 100;
  */
 export function summarise(dates, days, settings, todayStr = null) {
   let workDays = 0, officeDays = 0, officeMins = 0, timedOfficeDays = 0;
-  let pastOfficeDays = 0, pastTimedOfficeDays = 0;   // up to today: the days that could have times by now
+  // "So far": the days that could have their hours in by now. That's every day
+  // before today, and today once it's settled - an office day when both times
+  // are in, any other work day straight away. A day still in progress isn't
+  // counted, so being at work doesn't read as hours behind.
+  let pastOfficeDays = 0, pastTimedOfficeDays = 0, pastWorkDays = 0, pastOfficeMins = 0;
   let daysWorked = 0, totalWorkDays = 0;
   const byCode = {};
   for (const date of dates) {
@@ -29,14 +33,15 @@ export function summarise(dates, days, settings, todayStr = null) {
     byCode[rec.code] = (byCode[rec.code] || 0) + 1;
     const def = CODE_MAP[rec.code];
     if (!def) continue;
-    if (def.workDay) workDays++;
+    const mins = def.office ? minutesBetween(rec.in, rec.out) : 0;
+    const soFar = !todayStr || date < todayStr || (date === todayStr && (!def.office || mins > 0));
+    if (def.workDay) { workDays++; if (soFar) pastWorkDays++; }
     if (def.worked) daysWorked++;
     if (def.keyWork) totalWorkDays++;
     if (def.office) {
       officeDays++;
-      const mins = minutesBetween(rec.in, rec.out);
       if (mins > 0) { officeMins += mins; timedOfficeDays++; }
-      if (!todayStr || date <= todayStr) { pastOfficeDays++; if (mins > 0) pastTimedOfficeDays++; }
+      if (soFar) { pastOfficeDays++; if (mins > 0) { pastTimedOfficeDays++; pastOfficeMins += mins; } }
     }
   }
   const officeHrs = officeMins / 60;
@@ -65,6 +70,13 @@ export function summarise(dates, days, settings, todayStr = null) {
     pastOfficeDays,
     pastTimedOfficeDays,
     untimedPastOfficeDays: pastOfficeDays - pastTimedOfficeDays,
+    // Office hours against the target, so far - the number to watch.
+    pastWorkDays,
+    pastOfficeHrs: round2(pastOfficeMins / 60),
+    pastAvailableHrs: round2(pastWorkDays * settings.stdDayHours),
+    pastReqHrs: round2(pastWorkDays * settings.stdDayHours * settings.officeReqPct),
+    pastGapHrs: round2(pastWorkDays * settings.stdDayHours * settings.officeReqPct - pastOfficeMins / 60),
+    pastPctHrs: pastWorkDays ? (pastOfficeMins / 60) / (pastWorkDays * settings.stdDayHours) : null,
   };
 }
 
@@ -95,13 +107,13 @@ export function buildSummary(fy, days, settings, todayStr) {
     monthIndex: idx,
     partial: containsToday,
     through: mtdDates[mtdDates.length - 1],
-    ...summarise(mtdDates, days, settings),
+    ...summarise(mtdDates, days, settings, todayStr),
   };
 
   return {
     months: months.map(({ dates, ...rest }) => rest),
     total: summarise(all, days, settings, todayStr),
-    ytd: summarise(ytdDates, days, settings),
+    ytd: summarise(ytdDates, days, settings, todayStr),
     mtd,
     firstDate: all[0],
     lastDate: all[all.length - 1],

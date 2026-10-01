@@ -183,31 +183,37 @@ holidays and your non-working day are left as they are, so the leave doesn't inf
 day counts. Weekends show a quiet **W**. A dot in the corner of a cell means hours are recorded; a small triangle means there's a comment.
 Gaps to the target read in words — "20.75 short", "3.00 ahead" — the same way as the tiles.
 
-The grid fits the page at 1280px and wider. Under *Hours* it shows Office, Avg and
-**Timed**: how many office days so far have times ("8 / 9"). When some are missing, Timed
-turns amber, along with H% and the hours gap, and hovering says how many. Office days
-still to come don't count. **All hour columns** brings back the workbook's Avail, H%, Req
-and Gap; the grid then scrolls inside its card, and the choice is kept for this browser.
+**Hours are measured against the office target.** "Office hours vs 50%" is how many hours
+you're ahead or short of what the requirement asks for on the days to date: 50% of a
+standard day for every work day so far. Today counts once its In and Out are both in, so
+being at work doesn't read as behind. A month still to come shows nothing yet. The
+average office day is still there, but as background.
 
-**The tiles** show office days against the requirement, *day length* (how long your
-office days actually are, against the standard day), and office hours against the
-workbook's target, which assumes every office day is a standard day. Hours are shown as
-information rather than as a failure: a month can be on target for days with office days
-shorter than 10.75 h, and the tiles now say why the two differ.
+The grid fits the page at 1280px and wider. Under *Hours* it shows Office, **H%** and
+**Gap**, counted to date. While some office days have no times, H% and Gap turn amber,
+and hovering says how many. **All hour columns** adds the workbook's Avail and Req, plus
+Avg and **Timed** (how many office days so far have times, "8 / 9"). The grid then
+scrolls inside its card, and the choice is kept for this browser.
+
+**The tiles** show office days against the requirement, then office hours against the
+target (hours ahead or short, and hours done against hours needed), then *day length*:
+how long your office days actually are, against the standard day.
 
 ### On a phone
 
 The page splits into three tabs along the bottom:
 
-- **Today** — the log card, with the punch button first, and how this month is going.
+- **Today** — the log card, with the punch button first, and how this month is going:
+  office days against the target, and office hours ahead or short of it.
 - **Month** — one month as a calendar, Monday first. Swipe sideways or use the arrows to
   change month (it crosses into the next or previous financial year); tap a day to open it
-  on Today. Days still to come are faded, and a dot means times are logged.
+  on Today. Days still to come are faded, and a dot means times are logged. Under the
+  calendar: office days and office hours against the target for that month.
   **Select** picks a range by touch: tap the first day, then the last, then a code in the
   sheet that slides up. As with Shift-click, only work days change. Weekends, holidays and
   your non-working day are hatched and left alone.
-- **Year** — the tiles and one row per month in place of the 31-column grid. Tap a month
-  to open it in the Month tab.
+- **Year** — the tiles and one row per month in place of the 31-column grid: office %,
+  days against the target, and hours against it. Tap a month to open it in the Month tab.
 
 The date heading is the date picker: tap it to choose a day. *Today* only appears when
 you're on another day.

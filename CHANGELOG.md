@@ -10,6 +10,28 @@ Versions are `MAJOR.MINOR.PATCH`:
 `npm run bump [major|minor|patch]` moves the number in every place it appears
 and opens an entry here. Nothing else should edit a version by hand.
 
+## 1.9.0 - 2026-10-01
+
+Hours are about the 50% target now, not the average day.
+
+- **One measure everywhere: office hours ahead or short of the 50% target, so far.** It
+  counts the days to date. Today only counts once its In and Out are both in, so being
+  at work doesn't read as hours behind. A month still to come shows nothing yet, rather
+  than looking hours short.
+- **Phone, Today:** the month card adds an hours line: "11.63 h short", with hours done
+  against hours needed. The average office day becomes a footnote.
+- **Phone, Month:** Office days and Office hours vs 50% side by side; the average is a
+  footnote.
+- **Year tab and the desktop tiles:** Office days, then Office hours vs 50%, then Day
+  length. The hours tile leads with hours ahead or short.
+- **Year list (phone):** Month, Office, Days, Hours. Hours is the gap to the target; Avg
+  day is gone.
+- **Desktop grid:** the compact Hours columns are Office, H% and Gap, so they now sit
+  where Avg was. Avg and Timed moved behind "All hour columns". Missing times still show
+  as amber H% and Gap, with the reason on hover. The hour columns count days to date; the
+  day columns still count planned days.
+- `APP_TODAY` pins the server's date, for testing only.
+
 ## 1.8.1 - 2026-10-01
 
 - **Times are always 24-hour.** The browser's own time boxes follow the computer's

@@ -33,6 +33,27 @@ export function gapWords(gap, fmt = (n) => (n % 1 === 0 ? String(n) : n.toFixed(
   return gap < 0 ? { text: `${fmt(-gap)} ahead`, cls: 'ahead' } : { text: `${fmt(gap)} short`, cls: 'short' };
 }
 
+/**
+ * Office hours against the target, so far, for any summary (a month, month
+ * to date, year to date, the year): the measure that matters for hours.
+ * Returns what every view shows - the hours ahead or short, how it stands,
+ * and the figures behind it - so they all say it the same way.
+ */
+export function hoursVsTarget(s, reqPct) {
+  if (!s.pastWorkDays) return { empty: true, cls: 'idle', pill: 'No work days yet', word: '', abs: 0, tone: '' };
+  const g = gapWords(s.pastGapHrs, fmtHrs2);
+  const abs = Math.abs(s.pastGapHrs);
+  const word = g.cls === 'on' ? 'on target' : g.cls;          // 'ahead' | 'short' | 'on target'
+  const missing = s.untimedPastOfficeDays;
+  const cls = missing ? 'warning'
+    : g.cls !== 'short' ? 'good'
+    : s.pastPctHrs != null && s.pastPctHrs >= reqPct - 0.05 ? 'warning' : 'critical';
+  const pill = missing ? `▲ ${missing} office ${plural(missing, 'day')} without times`
+    : g.cls === 'short' ? `▼ ${fmtHrs2(abs)} h short` : g.cls === 'on' ? '● On target' : `● ${fmtHrs2(abs)} h ahead`;
+  const tone = g.cls === 'short' ? 'gap-short-t' : g.cls === 'ahead' ? 'gap-ok-t' : '';   // colours the word
+  return { empty: false, cls, pill, word, abs, g, tone };
+}
+
 /** A code's light and dark colour pairs as CSS variables, for an element with class "code". */
 export const codeVars = (def) => `--c-bg:${def.bg};--c-fg:${def.fg};--c-dbg:${def.dbg};--c-dfg:${def.dfg}`;
 

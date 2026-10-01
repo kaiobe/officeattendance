@@ -73,3 +73,30 @@ test('untimed office days count only up to today: a planned office day cannot ha
   assert.equal(months[0].pastOfficeDays, 0, 'a month still to come has nothing due');
   assert.equal(months[0].untimedPastOfficeDays, 0);
 });
+
+test('office hours against the target, so far: past days, and today once it is settled', () => {
+  const std = { ...settings, stdDayHours: 8, officeReqPct: 0.5 };
+  const days = {
+    '2026-10-12': { code: 'O', in: '08:00', out: '17:00' },  // 9 h
+    '2026-10-13': { code: 'H' },                              // a work day, no office hours
+    '2026-10-14': { code: 'O', in: '08:00' },                 // today, still at work: not counted yet
+    '2026-10-20': { code: 'O' },                              // planned: not counted
+  };
+  const dates = Object.keys(days);
+  const s = summarise(dates, days, std, '2026-10-14');
+  assert.equal(s.pastWorkDays, 2);
+  assert.equal(s.pastOfficeHrs, 9);
+  assert.equal(s.pastReqHrs, 8);                              // 2 days x 8 h x 50%
+  assert.equal(s.pastGapHrs, -1);                             // 1 h ahead
+  assert.equal(s.untimedPastOfficeDays, 0, 'today in progress is not flagged as missing times');
+  // once today's Out is in, it counts
+  days['2026-10-14'].out = '12:00';
+  const t = summarise(dates, days, std, '2026-10-14');
+  assert.equal(t.pastWorkDays, 3);
+  assert.equal(t.pastOfficeHrs, 13);
+  assert.equal(t.pastGapHrs, -1);                             // 12 needed, 13 done
+  // a home day today counts straight away
+  const h = summarise(['2026-10-15'], { '2026-10-15': { code: 'H' } }, std, '2026-10-15');
+  assert.equal(h.pastWorkDays, 1);
+  assert.equal(h.pastGapHrs, 4);
+});

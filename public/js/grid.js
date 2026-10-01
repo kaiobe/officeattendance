@@ -4,10 +4,12 @@ import { $, esc, fmtHrs2, fmtNum, pct, longDate, gapWords, codeVars } from './fo
 import { DAY_NAMES, pad, weekdayOf } from '../lib/dates.js';
 
 /**
- * The stat columns. The grid shows the ones worth scanning; the rest of the
- * workbook's hour columns (Avail, H%, Req, Gap) sit behind "All hour columns",
- * so the year fits the page without a sideways scroll. The choice is kept
- * for this browser.
+ * The stat columns. Under Hours the grid shows what matters - office hours,
+ * H% and the gap to the target. The rest (Avail, Req, Avg, and Timed, how
+ * many office days have their times) sit behind "All hour columns", so the
+ * year fits the page without a sideways scroll. Missing times still show, as
+ * amber H% and gap figures with the reason on hover. The choice is kept for
+ * this browser.
  */
 const HOUR_PREF = 'grid.allHourCols';
 export function allHourCols() {
@@ -32,7 +34,7 @@ function dayCols() {
   return ['Work', 'Office', '%', `vs ${Math.round(S.settings.officeReqPct * 100)}%`];
 }
 function hourCols(all) {
-  return all ? ['Office', 'Avail', 'H%', 'Req', 'Gap', 'Avg', 'Timed'] : ['Office', 'Avg', 'Timed'];
+  return all ? ['Office', 'Avail', 'H%', 'Req', 'Gap', 'Avg', 'Timed'] : ['Office', 'H%', 'Gap'];
 }
 
 function dayStatCells(m) {
@@ -43,31 +45,31 @@ function dayStatCells(m) {
 }
 
 /**
+ * The hour columns count the days to date (see calc.js, "so far"): a month
+ * under way is measured on the days that have had their hours, and a month
+ * still to come shows nothing yet, rather than looking hours short. Days
+ * columns still count planned days, which is how the days target is planned.
+ *
  * Hours need every office day timed to mean much. "Timed" says how complete
  * they are; while some office days have no times, H% and the gap are shown
  * in amber with the reason on hover, rather than as a confident number.
  */
 function hourStatCells(m, all) {
-  const hasHrs = m.officeHrs > 0;
-  // Only days up to today count: a planned office day can't have times yet.
+  const has = m.pastWorkDays > 0;
   const patchy = m.untimedPastOfficeDays > 0;
   const title = patchy ? ` title="${m.untimedPastOfficeDays} of ${m.pastOfficeDays} office days so far have no times"` : '';
-  const why = patchy ? `${title} class="stat patchy"` : '';
+  const amber = patchy ? ' patchy' : '';
   const timed = m.pastOfficeDays
-    ? `<td class="stat${patchy ? ' patchy' : ''}"${title}>${m.pastTimedOfficeDays} / ${m.pastOfficeDays}</td>`
+    ? `<td class="stat${amber}"${title}>${m.pastTimedOfficeDays} / ${m.pastOfficeDays}</td>`
     : dash;
-  const office = `<td class="stat sep">${hasHrs ? fmtHrs2(m.officeHrs) : '—'}</td>`;
+  const office = `<td class="stat sep">${m.pastOfficeHrs > 0 ? fmtHrs2(m.pastOfficeHrs) : '—'}</td>`;
+  const hpct = has && m.pastPctHrs != null ? `<td class="stat${amber}"${title}>${pct(m.pastPctHrs)}%</td>` : dash;
+  const gap = has ? gapCell(m.pastGapHrs, m.pastAvailableHrs, fmtHrs2).replace('<td class="stat"', `<td class="stat${amber}"${title}`) : dash;
+  if (!all) return office + hpct + gap;
+  const avail = `<td class="stat">${has ? fmtHrs2(m.pastAvailableHrs) : '—'}</td>`;
+  const reqH = `<td class="stat">${has ? fmtHrs2(m.pastReqHrs) : '—'}</td>`;
   const avg = `<td class="stat">${m.avgHrsPerOfficeDay == null ? '—' : fmtHrs2(m.avgHrsPerOfficeDay)}</td>`;
-  if (!all) return office + avg + timed;
-  const hpct = hasHrs && m.pctHrs != null
-    ? `<td${why || ' class="stat"'}>${pct(m.pctHrs)}%</td>` : dash;
-  const gap = hasHrs && m.availableHrs
-    ? gapCell(m.gapHrs, m.availableHrs, fmtHrs2).replace('<td class="stat"', `<td${why || ' class="stat"'}`) : dash;
-  return office
-    + `<td class="stat">${m.availableHrs ? fmtHrs2(m.availableHrs) : '—'}</td>`
-    + hpct
-    + `<td class="stat">${m.availableHrs ? fmtHrs2(m.reqHrs) : '—'}</td>`
-    + gap + avg + timed;
+  return office + avail + hpct + reqH + gap + avg + timed;
 }
 
 /** What a screen reader says for a cell - the tooltip carries the same. */
@@ -166,6 +168,14 @@ export function renderGridNote() {
  * The phone's Year tab: one row per month instead of the 31-column grid.
  * Tapping a month opens it in the month view.
  */
+/** The year list's hours column: hours ahead or short of the target, to date. */
+function hoursCell(m) {
+  if (!m.pastWorkDays) return '<span>—</span>';
+  const g = gapWords(m.pastGapHrs, fmtHrs2);
+  const cls = m.untimedPastOfficeDays ? 'patchy-t' : g.cls === 'short' ? 'gap-short-t' : g.cls === 'ahead' ? 'gap-ok-t' : '';
+  return `<span class="${cls}">${g.cls === 'on' ? 'on target' : g.text}</span>`;
+}
+
 export function renderYearList(onPickMonth) {
   const req = Math.round(S.settings.officeReqPct * 100);
   const row = (m, label) => {
@@ -174,10 +184,11 @@ export function renderYearList(onPickMonth) {
     return `<span class="m">${label}</span>
       <span>${m.pctDays == null ? '—' : pct(m.pctDays) + '%'}</span>
       <span class="${cls}">${g ? g.text : '—'}</span>
-      <span>${m.avgHrsPerOfficeDay == null ? '—' : fmtHrs2(m.avgHrsPerOfficeDay) + ' h'}</span>`;
+      ${hoursCell(m)}`;
   };
   $('yearList').innerHTML =
-    `<div class="yl-row yl-head"><span class="m">Month</span><span>Office</span><span>vs ${req}%</span><span>Avg day</span></div>`
+    `<p class="yl-note">Days and hours against the ${req}% target, hours to date</p>`
+    + `<div class="yl-row yl-head"><span class="m">Month</span><span>Office</span><span>Days</span><span>Hours</span></div>`
     + S.summary.months.map((m, i) => `<button class="yl-row" data-i="${i}" aria-label="Open ${m.name} ${m.year}">${row(m, `${m.name.slice(0, 3)} ${String(m.year).slice(2)}`)}</button>`).join('')
     + `<div class="yl-row yl-total">${row(S.summary.total, `FY${S.fy}`)}</div>`;
   $('yearList').querySelectorAll('button[data-i]').forEach((b) => { b.onclick = () => onPickMonth(Number(b.dataset.i)); });
