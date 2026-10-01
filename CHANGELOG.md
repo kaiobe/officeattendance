@@ -10,6 +10,11 @@ Versions are `MAJOR.MINOR.PATCH`:
 `npm run bump [major|minor|patch]` moves the number in every place it appears
 and opens an entry here. Nothing else should edit a version by hand.
 
+## 1.17.2 - 2026-10-01
+
+- **Phone Month tab key:** *weekend* is gone (weekends already show W), and *still to
+  come* now reads *planned (faded)*, matching the rest of the app.
+
 ## 1.17.1 - 2026-10-01
 
 - **Phone version:** a phone set up on 1.8.0 and still on that release's standard day

@@ -11,6 +11,6 @@
  */
 import { boot } from './js/main.js';
 
-const APP_VERSION = '1.17.1';
+const APP_VERSION = '1.17.2';
 
 boot(APP_VERSION);

@@ -314,7 +314,8 @@ The page splits into three tabs along the bottom:
   office days against the target, and office hours ahead or short of it.
 - **Month** — one month as a calendar, Monday first. Swipe sideways or use the arrows to
   change month (it crosses into the next or previous financial year); tap a day to open it
-  on Today. Days still to come are faded, and a dot means times are logged. Under the
+  on Today. Planned days (still to come) are faded, a dot means times are logged, and
+  weekends show W. Under the
   calendar: office days and office hours against the target for that month.
   **Select** picks a range by touch: tap the first day, then the last, then a code in the
   sheet that slides up. As with Shift-click, only work days change. Weekends, holidays and
