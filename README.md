@@ -189,6 +189,13 @@ standard day for every work day so far. Today counts once its In and Out are bot
 being at work doesn't read as behind. A month still to come shows nothing yet. The
 average office day is still there, but as background.
 
+**Planning ahead.** Codes and times entered on days still to come are your plan. The month
+view (the phone's Month tab, and the desktop tiles' **Month** and **Full year**) counts
+them: hours ahead or short if the plan holds, shown as "done + planned of needed", with
+where you stand today underneath. A planned office day with no times counts as a standard
+day, and the view says so. The Today card, **Month to date**, **Year to date** and the grid
+stay on days to date.
+
 The grid fits the page at 1280px and wider. Under *Hours* it shows Office, **H%** and
 **Gap**, counted to date. While some office days have no times, H% and Gap turn amber,
 and hovering says how many. **All hour columns** adds the workbook's Avail and Req, plus

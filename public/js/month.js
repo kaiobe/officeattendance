@@ -144,12 +144,12 @@ export function renderMonth() {
   const g = gapWords(m.gapDays);
   const dCls = empty ? 'idle' : g.cls === 'short' ? 'critical' : 'good';
   const dPill = empty ? 'No work days' : g.cls === 'on' ? 'On target' : `${g.text.split(' ')[0]} ${plural(Math.abs(m.gapDays), 'day')} ${g.cls}`;
-  // Hours against the target, to date: a month still under way counts the days
-  // so far, and a month still to come has none yet.
+  // Hours against the target for the whole month, plans included: hours done,
+  // plus the times entered on days still to come. Where it stands today is
+  // underneath. A month already over is just what happened.
   const req = S.settings.officeReqPct;
-  const hv = hoursVsTarget(m, req);
+  const hv = hoursVsTarget(m, req, { plans: true });
   const avg = m.avgHrsPerOfficeDay;
-  const partial = m.pastWorkDays < m.workDays;
   $('mStats').innerHTML = `
     <div class="mstat">
       <span class="lbl">Office days</span>
@@ -158,11 +158,12 @@ export function renderMonth() {
       <span class="status ${dCls}">${dPill}</span>
     </div>
     <div class="mstat">
-      <span class="lbl">Office hours vs ${Math.round(req * 100)}%</span>
+      <span class="lbl">Office hours vs ${Math.round(req * 100)}%${hv.planned ? ' · with plans' : ''}</span>
       <span class="val">${hv.empty ? '—' : `${fmtHrs2(hv.abs)}<span class="unit"> h <span class="${hv.tone}">${hv.word}</span></span>`}</span>
-      <span class="sub">${hv.empty ? (m.workDays ? 'No days to date yet' : 'No work days')
-        : `${fmtHrs2(m.pastOfficeHrs)} of ${fmtHrs2(m.pastReqHrs)} h needed${partial ? ' so far' : ''}`}</span>
-      ${hv.empty ? '' : `<span class="status ${hv.cls}">${hv.pill}</span>`}
+      <span class="sub">${hv.empty ? 'No work days' : hv.made}</span>
+      ${hv.soFar ? `<span class="sub sofar-line">${hv.soFar}</span>` : ''}
+      ${hv.cls === 'warning' ? `<span class="status warning">${hv.pill}</span>` : ''}
+      ${hv.assumed ? `<span class="sub assumed">${hv.assumed}</span>` : ''}
     </div>
     <p class="mfoot">${avg == null ? `No office times yet · standard day ${fmtHrs(S.settings.stdDayHours)} h`
       : `Average office day ${fmtHrs2(avg)} h over ${m.timedOfficeDays} timed ${plural(m.timedOfficeDays, 'day')} · standard ${fmtHrs(S.settings.stdDayHours)} h`}</p>`;

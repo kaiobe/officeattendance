@@ -100,3 +100,27 @@ test('office hours against the target, so far: past days, and today once it is s
   assert.equal(h.pastWorkDays, 1);
   assert.equal(h.pastGapHrs, 4);
 });
+
+test('with plans: hours done plus hours planned ahead, against the target for every work day', () => {
+  const std = { ...settings, stdDayHours: 8, officeReqPct: 0.5 };
+  const days = {
+    '2026-10-12': { code: 'O', in: '08:00', out: '17:00' },   // done: 9 h
+    '2026-10-13': { code: 'H' },                               // done: a work day
+    '2026-10-14': { code: 'O', in: '08:00' },                  // today, still at work: a standard day (8 h)
+    '2026-10-19': { code: 'O', in: '09:00', out: '15:00' },    // planned: 6 h
+    '2026-10-20': { code: 'O' },                               // planned, no times: a standard day (8 h)
+    '2026-10-21': { code: 'H' },                               // planned work day
+  };
+  const s = summarise(Object.keys(days), days, std, '2026-10-14');
+  assert.equal(s.pastOfficeHrs, 9);
+  assert.equal(s.plannedWorkDays, 4);
+  assert.equal(s.plannedUntimedOfficeDays, 2);
+  assert.equal(s.plannedOfficeHrs, 22);                        // 6 + 8 + 8
+  assert.equal(s.projOfficeHrs, 31);
+  assert.equal(s.projReqHrs, 24);                              // 6 work days x 8 h x 50%
+  assert.equal(s.projGapHrs, -7);                              // 7 h ahead if the plan holds
+  // a month entirely in the past: with plans is just the actual
+  const past = summarise(Object.keys(days), days, std, '2026-11-30');
+  assert.equal(past.plannedWorkDays, 0);
+  assert.equal(past.projGapHrs, past.pastGapHrs);
+});

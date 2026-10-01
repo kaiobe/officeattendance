@@ -25,6 +25,9 @@ export function summarise(dates, days, settings, todayStr = null) {
   // are in, any other work day straight away. A day still in progress isn't
   // counted, so being at work doesn't read as hours behind.
   let pastOfficeDays = 0, pastTimedOfficeDays = 0, pastWorkDays = 0, pastOfficeMins = 0;
+  // Planned: office days still to come (or today, still in progress). Their
+  // entered times are the plan; one without both times counts as a standard day.
+  let plannedOfficeMins = 0, plannedUntimed = 0;
   let daysWorked = 0, totalWorkDays = 0;
   const byCode = {};
   for (const date of dates) {
@@ -42,6 +45,8 @@ export function summarise(dates, days, settings, todayStr = null) {
       officeDays++;
       if (mins > 0) { officeMins += mins; timedOfficeDays++; }
       if (soFar) { pastOfficeDays++; if (mins > 0) { pastTimedOfficeDays++; pastOfficeMins += mins; } }
+      else if (mins > 0 && rec.in && rec.out) plannedOfficeMins += mins;
+      else plannedUntimed++;
     }
   }
   const officeHrs = officeMins / 60;
@@ -77,6 +82,26 @@ export function summarise(dates, days, settings, todayStr = null) {
     pastReqHrs: round2(pastWorkDays * settings.stdDayHours * settings.officeReqPct),
     pastGapHrs: round2(pastWorkDays * settings.stdDayHours * settings.officeReqPct - pastOfficeMins / 60),
     pastPctHrs: pastWorkDays ? (pastOfficeMins / 60) / (pastWorkDays * settings.stdDayHours) : null,
+    // With plans: everything entered for the period - hours done, plus the
+    // hours planned on days still to come - against the target for all its
+    // work days. What a month will come to if the plan holds.
+    ...withPlans(pastOfficeMins, plannedOfficeMins, plannedUntimed, workDays, pastWorkDays, settings),
+  };
+}
+
+function withPlans(pastMins, plannedMins, plannedUntimed, workDays, pastWorkDays, settings) {
+  const estimated = plannedUntimed * settings.stdDayHours;
+  const projOfficeHrs = pastMins / 60 + plannedMins / 60 + estimated;
+  const available = workDays * settings.stdDayHours;
+  const req = available * settings.officeReqPct;
+  return {
+    plannedWorkDays: workDays - pastWorkDays,
+    plannedOfficeHrs: round2(plannedMins / 60 + estimated),
+    plannedUntimedOfficeDays: plannedUntimed,
+    projOfficeHrs: round2(projOfficeHrs),
+    projReqHrs: round2(req),
+    projGapHrs: round2(req - projOfficeHrs),
+    projPctHrs: available ? projOfficeHrs / available : null,
   };
 }
 

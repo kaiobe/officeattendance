@@ -66,19 +66,22 @@ export function renderTiles() {
   const lenSub = avg == null ? `Standard day ${fmtHrs(std)} h`
     : `average of ${s.timedOfficeDays} timed ${plural(s.timedOfficeDays, 'day')} · standard day ${fmtHrs(std)} h`;
 
-  // Office hours against the target, so far: hours ahead or short of what the
-  // office requirement asks for on the days to date. Second only to days.
-  const hv = hoursVsTarget(s, req);
+  // Office hours against the target. Periods that end today (month to date,
+  // year to date) count what's done so far; a whole month or the full year
+  // counts plans too - the hours entered on days still to come.
+  const plans = S.period === 'month' || S.period === 'full';
+  const hv = hoursVsTarget(s, req, { plans });
   const reqPct = Math.round(req * 100);
-  const partial = s.pastWorkDays < s.workDays || (S.period === 'mtd' && S.summary.mtd.partial);
   const hoursTile = `
     <div class="tile">
-      <div class="label">Office hours vs ${reqPct}%</div>
+      <div class="label">Office hours vs ${reqPct}%${hv.planned ? ' · with plans' : ''}</div>
       <div class="value">${hv.empty ? '—' : `${fmtHrs2(hv.abs)}<span class="unit"> h <span class="${hv.tone}">${hv.word}</span></span>`}</div>
       <div class="sub">${hv.empty ? `No days to date yet · ${reqPct}% of ${fmtHrs(std)} h a work day`
-        : `${fmtHrs2(s.pastOfficeHrs)} of ${fmtHrs2(s.pastReqHrs)} h needed${partial ? ' so far' : ''} · ${reqPct}% of ${fmtHrs(std)} h a work day`}</div>
-      <div class="status ${hv.cls}">${hv.pill}</div>
-      ${meter(s.pastPctHrs, req, hv.empty ? 'idle' : hv.cls === 'warning' ? 'warning' : hv.cls)}
+        : `${hv.made} · ${reqPct}% of ${fmtHrs(std)} h a work day`}</div>
+      ${hv.soFar ? `<div class="sub sofar-line">${hv.soFar}</div>` : ''}
+      ${hv.cls === 'warning' ? `<div class="status warning">${hv.pill}</div>` : ''}
+      ${hv.assumed ? `<div class="sub assumed">${hv.assumed}</div>` : ''}
+      ${meter(hv.pctHrs, req, hv.empty ? 'idle' : hv.cls)}
     </div>`;
 
   $('tiles').innerHTML = `

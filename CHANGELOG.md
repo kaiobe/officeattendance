@@ -10,6 +10,19 @@ Versions are `MAJOR.MINOR.PATCH`:
 `npm run bump [major|minor|patch]` moves the number in every place it appears
 and opens an entry here. Nothing else should edit a version by hand.
 
+## 1.10.0 - 2026-10-01
+
+- **The month view counts the hours you plan ahead.** Codes and times entered on days still
+  to come are the plan. The Month tab now shows the whole month with plans included: hours
+  ahead or short if the plan holds, made up as "47.50 done + 28.50 planned of 96.75 h
+  needed". Change a planned time and the month moves with it.
+- A month under way also shows where it stands today ("So far: 11.63 h short"). A month
+  already over is just what happened.
+- A planned office day with no times counts as a standard day, and the view says how many
+  it assumed. So does today while you're still at work.
+- The desktop tiles do the same for **Month** and **Full year**. **Month to date** and **Year
+  to date**, the phone's Today card and the grid still count days to date.
+
 ## 1.9.0 - 2026-10-01
 
 Hours are about the 50% target now, not the average day.
