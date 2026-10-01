@@ -9,7 +9,8 @@
  * Shift-click on the desktop grid.
  */
 import { S, loadState } from './state.js';
-import { $, esc, fmtHrs, fmtHrs2, pct, plural, gapWords, codeVars, hoursVsTarget } from './format.js';
+import { $, esc, fmtHrs, fmtHrs2, plural, codeVars } from './format.js';
+import { daysStat, hoursStat } from './stat.js';
 import { describe } from './grid.js';
 import { attempt } from './dialogs.js';
 import { applyCodeTo } from './log.js';
@@ -140,33 +141,13 @@ export function renderMonth() {
     };
   });
 
-  const empty = m.workDays === 0;
-  const g = gapWords(m.gapDays);
-  const dCls = empty ? 'idle' : g.cls === 'short' ? 'critical' : 'good';
-  const dPill = empty ? 'No work days' : g.cls === 'on' ? 'On target' : `${g.text.split(' ')[0]} ${plural(Math.abs(m.gapDays), 'day')} ${g.cls}`;
-  // Hours against the target for the whole month, plans included: hours done,
-  // plus the times entered on days still to come. Where it stands today is
-  // underneath. A month already over is just what happened.
-  const req = S.settings.officeReqPct;
-  const hv = hoursVsTarget(m, req, { plans: true });
+  // Office days, and office hours for the whole month with plans included:
+  // hours done plus the times entered on days still to come, with where it
+  // stands today in the note. A month already over is just what happened.
+  const req = S.settings.officeReqPct, std = S.settings.stdDayHours;
   const avg = m.avgHrsPerOfficeDay;
-  $('mStats').innerHTML = `
-    <div class="mstat">
-      <span class="lbl">Office days</span>
-      <span class="val">${empty ? '—' : pct(m.pctDays)}${empty ? '' : '<span class="unit">%</span>'}</span>
-      <span class="sub">${m.officeDays} of ${m.workDays} work days${empty ? '' : ` · ${fmtHrs(m.reqDays)} needed`}</span>
-      <span class="status ${dCls}">${dPill}</span>
-    </div>
-    <div class="mstat">
-      <span class="lbl">Office hours vs ${Math.round(req * 100)}%${hv.planned ? ' · with plans' : ''}</span>
-      <span class="val">${hv.empty ? '—' : `${fmtHrs2(hv.abs)}<span class="unit"> h <span class="${hv.tone}">${hv.word}</span></span>`}</span>
-      <span class="sub">${hv.empty ? 'No work days' : hv.made}</span>
-      ${hv.soFar ? `<span class="sub sofar-line">${hv.soFar}</span>` : ''}
-      ${hv.cls === 'warning' ? `<span class="status warning">${hv.pill}</span>` : ''}
-      ${hv.assumed ? `<span class="sub assumed">${hv.assumed}</span>` : ''}
-    </div>
-    <p class="mfoot">${avg == null ? `No office times yet · standard day ${fmtHrs(S.settings.stdDayHours)} h`
-      : `Average office day ${fmtHrs2(avg)} h over ${m.timedOfficeDays} timed ${plural(m.timedOfficeDays, 'day')} · standard ${fmtHrs(S.settings.stdDayHours)} h`}</p>`;
+  $('mStats').innerHTML = daysStat(m, req, { label: 'Days' }) + hoursStat(m, req, std, { plans: true, label: 'Hours' })
+    + `<p class="mfoot">${avg == null ? '' : `Avg office day ${fmtHrs2(avg)} h · std ${fmtHrs(std)} h`}</p>`;
   renderSheet();
 }
 

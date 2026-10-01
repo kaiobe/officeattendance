@@ -190,21 +190,27 @@ being at work doesn't read as behind. A month still to come shows nothing yet. T
 average office day is still there, but as background.
 
 **Planning ahead.** Codes and times entered on days still to come are your plan. The month
-view (the phone's Month tab, and the desktop tiles' **Month** and **Full year**) counts
-them: hours ahead or short if the plan holds, shown as "done + planned of needed", with
-where you stand today underneath. A planned office day with no times counts as a standard
-day, and the view says so. The Today card, **Month to date**, **Year to date** and the grid
+views (the phone's Month tab, the desktop tiles' **Month** and **Full year**) and the grid
+count them: hours ahead or short if the plan holds. The cards are tagged *incl. plans*,
+with the planned hours and where you stand today in the note. A planned office day with
+no times counts as a standard day. The Today card, **Month to date** and **Year to date**
 stay on days to date.
 
-The grid fits the page at 1280px and wider. Under *Hours* it shows Office, **H%** and
-**Gap**, counted to date. While some office days have no times, H% and Gap turn amber,
-and hovering says how many. **All hour columns** adds the workbook's Avail and Req, plus
-Avg and **Timed** (how many office days so far have times, "8 / 9"). The grid then
-scrolls inside its card, and the choice is kept for this browser.
+Ahead and short are a sign and a colour everywhere: **+3.25** in green is ahead,
+**−11.63** in red is short. Hover a card for what the number means.
 
-**The tiles** show office days against the requirement, then office hours against the
-target (hours ahead or short, and hours done against hours needed), then *day length*:
-how long your office days actually are, against the standard day.
+The grid fits the page at 1280px and wider. Under *Hours* it shows Office, **H%** and
+**Gap**. Like the day columns, they count everything entered, hours planned ahead
+included. A planned office day with no times counts as a standard day, and totals that
+include one are in *italics*. An amber dot means some past office days have no times;
+hover for how many. **All hour columns** adds the workbook's Avail and Req, plus Avg and
+**Timed** (how many office days so far have times, "8 / 9"). The grid then scrolls inside
+its card, and the choice is kept for this browser.
+
+**The cards** all share one layout: a label, one number, one line of figures and a bar.
+Office days shows the percentage with the days ahead or short beside it. Office hours
+shows the hours ahead or short. Day length shows the average office day against the
+standard.
 
 ### On a phone
 

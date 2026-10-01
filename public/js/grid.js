@@ -1,6 +1,7 @@
 /** The year grid, the key totals under it, the holiday note and the legend. */
 import { S } from './state.js';
-import { $, esc, fmtHrs2, fmtNum, pct, longDate, gapWords, codeVars } from './format.js';
+import { $, esc, fmtHrs2, fmtNum, pct, longDate, codeVars } from './format.js';
+import { signedHtml } from './stat.js';
 import { DAY_NAMES, pad, weekdayOf } from '../lib/dates.js';
 
 /**
@@ -21,13 +22,11 @@ export function setAllHourCols(on) {
 
 const dash = '<td class="stat">—</td>';
 
-// A gap in words - "20.75 short", "3.00 ahead" - the way the tiles say it. A
-// plus sign read as extra, when it meant short. Blank when there's nothing to compare.
+// A gap as a signed surplus - +3.00 ahead in green, −20.75 short in red - the
+// same way the cards show it. Blank when there's nothing to compare.
 function gapCell(gap, basis, fmt = fmtNum, extra = '') {
   if (!basis) return dash;
-  const g = gapWords(gap, fmt);
-  const cls = g.cls === 'short' ? 'gap-short' : g.cls === 'ahead' ? 'gap-ok' : '';
-  return `<td class="stat"${extra}><span class="${cls}">${g.text}</span></td>`;
+  return `<td class="stat"${extra}>${signedHtml(-gap, fmt)}</td>`;
 }
 
 function dayCols() {
@@ -45,29 +44,34 @@ function dayStatCells(m) {
 }
 
 /**
- * The hour columns count the days to date (see calc.js, "so far"): a month
- * under way is measured on the days that have had their hours, and a month
- * still to come shows nothing yet, rather than looking hours short. Days
- * columns still count planned days, which is how the days target is planned.
+ * The hour columns count everything entered, like the day columns: hours done,
+ * plus the times on days still to come (a planned office day with no times
+ * counts as a standard day - see calc.js, withPlans). So a month mapped out
+ * ahead shows where it will land.
  *
- * Hours need every office day timed to mean much. "Timed" says how complete
- * they are; while some office days have no times, H% and the gap are shown
- * in amber with the reason on hover, rather than as a confident number.
+ * A month whose hours include such an estimate shows them in italics, with
+ * the reason on hover. "Timed" says how many office days so far have their
+ * times. While some don't, H% and the gap get an amber mark with the reason
+ * on hover: the number may be low only because times are missing.
  */
 function hourStatCells(m, all) {
-  const has = m.pastWorkDays > 0;
+  const has = m.workDays > 0;
   const patchy = m.untimedPastOfficeDays > 0;
-  const title = patchy ? ` title="${m.untimedPastOfficeDays} of ${m.pastOfficeDays} office days so far have no times"` : '';
-  const amber = patchy ? ' patchy' : '';
+  const why = [
+    patchy ? `${m.untimedPastOfficeDays} of ${m.pastOfficeDays} office days so far have no times` : '',
+    m.plannedUntimedOfficeDays ? `${m.plannedUntimedOfficeDays} planned office ${m.plannedUntimedOfficeDays === 1 ? 'day' : 'days'} without times counted as a standard day` : '',
+  ].filter(Boolean).join('; ');
+  const title = why ? ` title="${why}"` : '';
+  const flag = (patchy ? ' flag' : '') + (m.plannedUntimedOfficeDays ? ' est' : '');
   const timed = m.pastOfficeDays
-    ? `<td class="stat${amber}"${title}>${m.pastTimedOfficeDays} / ${m.pastOfficeDays}</td>`
+    ? `<td class="stat${flag}"${title}>${m.pastTimedOfficeDays} / ${m.pastOfficeDays}</td>`
     : dash;
-  const office = `<td class="stat sep">${m.pastOfficeHrs > 0 ? fmtHrs2(m.pastOfficeHrs) : '—'}</td>`;
-  const hpct = has && m.pastPctHrs != null ? `<td class="stat${amber}"${title}>${pct(m.pastPctHrs)}%</td>` : dash;
-  const gap = has ? gapCell(m.pastGapHrs, m.pastAvailableHrs, fmtHrs2).replace('<td class="stat"', `<td class="stat${amber}"${title}`) : dash;
+  const office = `<td class="stat sep${m.plannedUntimedOfficeDays ? ' est' : ''}"${title}>${m.projOfficeHrs > 0 ? fmtHrs2(m.projOfficeHrs) : '—'}</td>`;
+  const hpct = has && m.projPctHrs != null ? `<td class="stat${flag}"${title}>${pct(m.projPctHrs)}%</td>` : dash;
+  const gap = has ? gapCell(m.projGapHrs, m.workDays, fmtHrs2, `${title}`).replace('<td class="stat"', `<td class="stat${flag}"`) : dash;
   if (!all) return office + hpct + gap;
-  const avail = `<td class="stat">${has ? fmtHrs2(m.pastAvailableHrs) : '—'}</td>`;
-  const reqH = `<td class="stat">${has ? fmtHrs2(m.pastReqHrs) : '—'}</td>`;
+  const avail = `<td class="stat">${has ? fmtHrs2(m.workDays * S.settings.stdDayHours) : '—'}</td>`;
+  const reqH = `<td class="stat">${has ? fmtHrs2(m.projReqHrs) : '—'}</td>`;
   const avg = `<td class="stat">${m.avgHrsPerOfficeDay == null ? '—' : fmtHrs2(m.avgHrsPerOfficeDay)}</td>`;
   return office + avail + hpct + reqH + gap + avg + timed;
 }
@@ -168,26 +172,20 @@ export function renderGridNote() {
  * The phone's Year tab: one row per month instead of the 31-column grid.
  * Tapping a month opens it in the month view.
  */
-/** The year list's hours column: hours ahead or short of the target, to date. */
+/** The year list's hours column: hours ahead (+) or short (−) of the target, plans included. */
 function hoursCell(m) {
-  if (!m.pastWorkDays) return '<span>—</span>';
-  const g = gapWords(m.pastGapHrs, fmtHrs2);
-  const cls = m.untimedPastOfficeDays ? 'patchy-t' : g.cls === 'short' ? 'gap-short-t' : g.cls === 'ahead' ? 'gap-ok-t' : '';
-  return `<span class="${cls}">${g.cls === 'on' ? 'on target' : g.text}</span>`;
+  if (!m.workDays) return '<span>—</span>';
+  return `<span${m.untimedPastOfficeDays ? ' class="flag"' : ''}>${signedHtml(-m.projGapHrs, fmtHrs2)}</span>`;
 }
 
 export function renderYearList(onPickMonth) {
   const req = Math.round(S.settings.officeReqPct * 100);
-  const row = (m, label) => {
-    const g = m.workDays ? gapWords(m.gapDays) : null;
-    const cls = !g ? '' : g.cls === 'short' ? 'gap-short-t' : g.cls === 'ahead' ? 'gap-ok-t' : '';
-    return `<span class="m">${label}</span>
+  const row = (m, label) => `<span class="m">${label}</span>
       <span>${m.pctDays == null ? '—' : pct(m.pctDays) + '%'}</span>
-      <span class="${cls}">${g ? g.text : '—'}</span>
+      <span>${m.workDays ? signedHtml(-m.gapDays) : '—'}</span>
       ${hoursCell(m)}`;
-  };
   $('yearList').innerHTML =
-    `<p class="yl-note">Days and hours against the ${req}% target, hours to date</p>`
+    `<p class="yl-note">Days and hours against the ${req}% target, plans included</p>`
     + `<div class="yl-row yl-head"><span class="m">Month</span><span>Office</span><span>Days</span><span>Hours</span></div>`
     + S.summary.months.map((m, i) => `<button class="yl-row" data-i="${i}" aria-label="Open ${m.name} ${m.year}">${row(m, `${m.name.slice(0, 3)} ${String(m.year).slice(2)}`)}</button>`).join('')
     + `<div class="yl-row yl-total">${row(S.summary.total, `FY${S.fy}`)}</div>`;

@@ -10,6 +10,25 @@ Versions are `MAJOR.MINOR.PATCH`:
 `npm run bump [major|minor|patch]` moves the number in every place it appears
 and opens an entry here. Nothing else should edit a version by hand.
 
+## 1.11.0 - 2026-10-01
+
+- **Cleaner cards.** Every card (desktop tiles, the Year tab, the phone's Today card and
+  Month tab) now uses one layout: a small label, one big number, one short line of
+  figures, and the bar. The sentences, the pills that repeated the number and the bar
+  captions are gone. The explanation is on hover. A note line only appears when there's
+  something to flag: planned hours, where a month stands so far, days estimated, or
+  missing times.
+- **+ and − instead of words.** Ahead and short are a sign and a colour everywhere: +3.25
+  in green, −11.63 in red. That covers the cards, the grid's days and hours gaps, and the
+  phone's year list.
+- **Grid totals include what you've entered ahead.** The hour columns (and the year total)
+  now count planned hours, the same way the day columns count planned days. A planned
+  office day with no times counts as a standard day; totals that include one are in
+  italics, with the reason on hover. Missing times on past days show as an amber dot,
+  not amber numbers.
+- The Today card is days and hours side by side, to date; the average moved off it. Day
+  length on the tiles has no bar now, since it's background.
+
 ## 1.10.0 - 2026-10-01
 
 - **The month view counts the hours you plan ahead.** Codes and times entered on days still

@@ -362,8 +362,6 @@ a { color: var(--accent); }
 .sf-main .sub { font-size: 13px; color: var(--text-2); }
 .sf-main .status { margin: 0 0 0 auto; }
 .sf-foot { font-size: 12px; color: var(--text-3-strong); }
-.sf-hours { margin-top: 6px; padding-top: 10px; border-top: 1px solid var(--border); }
-.sf-hours .sf-val { font-size: 26px; }
 #soFar .meter { margin-top: 2px; }
 
 /* ---------- month view (phone, Month tab) ---------- */
@@ -401,8 +399,6 @@ a { color: var(--accent); }
 .mstat .sub { font-size: 12.5px; color: var(--text-2); }
 .mstat .status { margin-top: 4px; }
 .mfoot { grid-column: 1 / -1; margin: 0; font-size: 12px; color: var(--text-3-strong); }
-.mstat .sofar-line, .tile .sofar-line { font-weight: 600; color: var(--text-1); }
-.mstat .assumed, .tile .assumed { font-size: 11.5px; color: var(--text-3-strong); }
 
 /* ---------- year by month (phone, Year tab) ---------- */
 .yearlist { padding: 2px 16px 12px; }
@@ -642,3 +638,33 @@ button.dayline:focus-visible { outline: 2px solid var(--accent); outline-offset:
 /* 24-hour time boxes (see js/timefield.js): room for HH:MM, figures lined up */
 input.time24 { font-variant-numeric: tabular-nums; letter-spacing: .02em; }
 input.time24::placeholder { color: var(--text-3); letter-spacing: .04em; }
+
+/* ---------- stat blocks (js/stat.js): every card uses the same layout ---------- */
+.stat-block { display: flex; flex-direction: column; min-width: 0; }
+.stat-head { display: flex; align-items: baseline; gap: 8px; margin-bottom: 4px; }
+.stat-label { font-size: 11px; font-weight: 650; text-transform: uppercase; letter-spacing: .08em; color: var(--text-3-strong); }
+.stat-tag { font-size: 10.5px; font-weight: 600; color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent); border-radius: 5px; padding: 1px 6px; letter-spacing: .02em; }
+.stat-value { display: flex; align-items: baseline; gap: 8px; font-size: 30px; font-weight: 660; letter-spacing: -.025em; line-height: 1.05; font-variant-numeric: tabular-nums; }
+.stat-value .unit { font-size: 15px; font-weight: 500; color: var(--text-2); margin-left: 2px; letter-spacing: 0; }
+.stat-value .v { white-space: nowrap; }
+.tile.hero .stat-value { font-size: 40px; }
+.stat-sub { font-size: 12.5px; color: var(--text-2); margin-top: 6px; font-variant-numeric: tabular-nums; }
+.stat-note { font-size: 12px; color: var(--text-3-strong); margin-top: 3px; font-variant-numeric: tabular-nums; }
+.stat-note .warn { color: var(--warning); font-weight: 600; }
+.stat-block .meter { margin-top: 10px; }
+.num.pos { color: var(--good-text); }
+.num.neg { color: var(--critical); }
+.num.zero { color: var(--text-2); }
+td.stat .num, .yl-row .num, .stat-note .num { font-weight: 600; }
+.chip-delta { align-self: center; font-size: 12.5px; font-weight: 650; letter-spacing: 0; border-radius: 6px; padding: 2px 7px; }
+.chip-delta.pos { color: var(--good-text); background: var(--good-soft); }
+.chip-delta.neg { color: var(--critical); background: var(--critical-soft); }
+.chip-delta.zero { color: var(--text-2); background: var(--surface-2); }
+/* missing times: an amber mark, the reason on hover */
+.flag { position: relative; }
+.flag::after { content: ""; display: inline-block; width: 6px; height: 6px; margin-left: 4px; border-radius: 50%; background: var(--warning); vertical-align: middle; }
+/* the Today card and the Month tab: two blocks side by side */
+.stat-pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px 18px; }
+.stat-pair .stat-value, .mstats .stat-value { font-size: 26px; }
+.mstats > .stat-block { min-width: 0; }
+td.stat.est { font-style: italic; }
