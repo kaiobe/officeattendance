@@ -1,0 +1,278 @@
+diff --git a/CHANGELOG.md b/CHANGELOG.md
+index a91a843..5292ec7 100644
+--- a/CHANGELOG.md
++++ b/CHANGELOG.md
+@@ -10,6 +10,16 @@ Versions are `MAJOR.MINOR.PATCH`:
+ `npm run bump [major|minor|patch]` moves the number in every place it appears
+ and opens an entry here. Nothing else should edit a version by hand.
+ 
++## 1.16.0 - 2026-10-01
++
++- **Phone Year tab:** the columns are now **Days %**, **Days +/-**, **Hours %** and
++  **Hours +/-**: each measure's share, then where it stands against the target.
++- **Red below target:** an office percentage under the target (50%) is red, in the
++  grid's % and H% columns, the phone's Year tab and the Office days card.
++- **The AFL Grand Final note can be closed** with its ✕. It stays closed in that browser
++  for those years, and comes back for a new year whose date isn't announced.
++- **Clear day stands apart** from the codes: below a dashed line, in red, with a ✕.
++
+ ## 1.15.0 - 2026-10-01
+ 
+ - **Grid:** the *vs 50%* day column is gone. The office **%** beside it already says it.
+diff --git a/README.md b/README.md
+index a05e9e3..17643c6 100644
+--- a/README.md
++++ b/README.md
+@@ -285,7 +285,7 @@ no times counts as a standard day. The Today card, **Month to date** and **Year
+ stay on days to date.
+ 
+ Ahead and short are a sign and a colour everywhere: **+3.25** in green is ahead,
+-**−11.63** in red is short. Hover a card for what the number means.
++**−11.63** in red is short. An office percentage below the target is red too. Hover a card for what the number means.
+ 
+ The grid fits the page at 1280px and wider. Under *Days* it shows Work, Office and the
+ office **%**. Under *Hours* it shows Office, **H%** and
+@@ -314,10 +314,10 @@ The page splits into three tabs along the bottom:
+   **Select** picks a range by touch: tap the first day, then the last, then a code in the
+   sheet that slides up. As with Shift-click, only work days change. Weekends, holidays and
+   your non-working day are hatched and left alone.
+-- **Year** — the tiles and one row per month in place of the 31-column grid: **Office D.**
+-  (office days as a % of work days), **Office H.** (office hours as a % of available
+-  hours), then **Days** and **Hours** ahead or short of the target, planned days included.
+-  Tap a month to open it in the Month tab.
++- **Year** — the tiles and one row per month in place of the 31-column grid: **Days %**
++  (office days as a % of work days), **Days +/-** (ahead or short of the target), then
++  **Hours %** (office hours as a % of available hours) and **Hours +/-**, planned days
++  included. Tap a month to open it in the Month tab.
+ 
+ The date heading is the date picker: tap it to choose a day. *Today* only appears when
+ you're on another day.
+@@ -435,7 +435,8 @@ The exception is **AFL Grand Final Friday**. Victoria sets it each year once the
+ releases its schedule, so it can't be derived. Confirmed dates live in
+ `AFL_GRAND_FINAL_FRIDAY` in `public/core/holidays.js` (2025 and 2026 so far). Any Victorian year without
+ one shows a note under the grid instead of a guessed date — add the year and date to that
+-object when it's announced, or just code the day `PH` by hand.
++object when it's announced, or just code the day `PH` by hand. The note's ✕ closes it in
++that browser for those years.
+ 
+ ---
+ 
+diff --git a/package.json b/package.json
+index 787fd14..66132e2 100644
+--- a/package.json
++++ b/package.json
+@@ -1,6 +1,6 @@
+ {
+   "name": "office-attendance",
+-  "version": "1.15.0",
++  "version": "1.16.0",
+   "private": true,
+   "type": "module",
+   "description": "Self-hosted office attendance tracker (days + hours) for an Oct-Sep financial year",
+diff --git a/public/app.js b/public/app.js
+index bf5bf58..c59c38c 100644
+--- a/public/app.js
++++ b/public/app.js
+@@ -11,6 +11,6 @@
+  */
+ import { boot } from './js/main.js';
+ 
+-const APP_VERSION = '1.15.0';
++const APP_VERSION = '1.16.0';
+ 
+ boot(APP_VERSION);
+diff --git a/public/js/grid.js b/public/js/grid.js
+index 87e7260..dc54d77 100644
+--- a/public/js/grid.js
++++ b/public/js/grid.js
+@@ -1,7 +1,7 @@
+ /** The year grid, the key totals under it, the holiday note and the legend. */
+ import { S } from './state.js';
+-import { $, esc, fmtHrs2, fmtNum, pct, longDate, codeVars } from './format.js';
+-import { signedHtml } from './stat.js';
++import { $, esc, fmtHrs2, fmtNum, longDate, codeVars } from './format.js';
++import { signedHtml, pctHtml } from './stat.js';
+ import { DAY_NAMES, pad, weekdayOf } from '../lib/dates.js';
+ 
+ /**
+@@ -37,9 +37,10 @@ function hourCols(all) {
+ }
+ 
+ function dayStatCells(m) {
++  const req = S.settings.officeReqPct;
+   return `<td class="stat">${m.workDays || '—'}</td>
+     <td class="stat">${m.officeDays || '—'}</td>
+-    <td class="stat endgroup">${m.pctDays == null ? '—' : pct(m.pctDays) + '%'}</td>`;
++    <td class="stat endgroup">${pctHtml(m.pctDays, req)}</td>`;
+ }
+ 
+ /**
+@@ -66,7 +67,7 @@ function hourStatCells(m, all) {
+     ? `<td class="stat${flag}"${title}>${m.pastTimedOfficeDays} / ${m.pastOfficeDays}</td>`
+     : dash;
+   const office = `<td class="stat sep${m.plannedUntimedOfficeDays ? ' est' : ''}"${title}>${m.projOfficeHrs > 0 ? fmtHrs2(m.projOfficeHrs) : '—'}</td>`;
+-  const hpct = has && m.projPctHrs != null ? `<td class="stat${flag}"${title}>${pct(m.projPctHrs)}%</td>` : dash;
++  const hpct = has && m.projPctHrs != null ? `<td class="stat${flag}"${title}>${pctHtml(m.projPctHrs, S.settings.officeReqPct)}</td>` : dash;
+   const gap = has ? gapCell(m.projGapHrs, m.workDays, fmtHrs2, `${title}`).replace('<td class="stat"', `<td class="stat${flag}"`) : dash;
+   if (!all) return office + hpct + gap;
+   const avail = `<td class="stat" title="(Office + Home days) × standard day hours">${has ? fmtHrs2(m.availableHrs) : '—'}</td>`;
+@@ -156,15 +157,28 @@ export function renderKeyTotals() {
+ 
+ // Victoria sets the Friday before the AFL Grand Final each year once the AFL
+ // releases its schedule, so future years genuinely have no date yet.
++// Closing it is remembered in this browser for those years; a new year's
++// missing date shows it again.
++const NOTE_KEY = 'office-attendance:afl-note-closed';
++function closedYears() {
++  try { return JSON.parse(localStorage.getItem(NOTE_KEY) || '[]'); } catch { return []; }
++}
+ export function renderGridNote() {
+   const el = $('gridnote');
++  const closed = closedYears();
+   const years = S.unconfirmed || [];
+-  el.hidden = !years.length;
+-  if (!years.length) return;
++  const show = years.some((y) => !closed.includes(y));
++  el.hidden = !show;
++  if (!show) return;
+   const many = years.length > 1;
+-  el.innerHTML = `<span>⚠</span><span>AFL Grand Final Friday ${many ? 'dates' : 'date'} for
++  el.innerHTML = `<span>⚠</span><span class="gn-text">AFL Grand Final Friday ${many ? 'dates' : 'date'} for
+     ${years.join(' and ')} ${many ? 'have' : 'has'} not been announced by the Victorian Government yet,
+-    so ${many ? 'those days are' : 'that day is'} not marked as a public holiday. Add it by hand once it's confirmed.</span>`;
++    so ${many ? 'those days are' : 'that day is'} not marked as a public holiday. Add it by hand once it's confirmed.</span>
++    <button class="gn-close" type="button" aria-label="Dismiss this note" title="Dismiss">✕</button>`;
++  el.querySelector('.gn-close').onclick = () => {
++    try { localStorage.setItem(NOTE_KEY, JSON.stringify([...new Set([...closed, ...years])])); } catch { /* kept for this visit only */ }
++    el.hidden = true;
++  };
+ }
+ 
+ /**
+@@ -180,25 +194,25 @@ function hourCells(m) {
+   if (!m.workDays) return ['<span>—</span>', '<span>—</span>'];
+   const flag = m.untimedPastOfficeDays ? ' class="flag"' : '';
+   return [
+-    `<span${flag}>${m.projPctHrs == null ? '—' : pct(m.projPctHrs) + '%'}</span>`,
++    `<span${flag}>${pctHtml(m.projPctHrs, S.settings.officeReqPct)}</span>`,
+     `<span${flag}>${signedHtml(-m.projGapHrs, fmtHrs2)}</span>`,
+   ];
+ }
+ 
+ export function renderYearList(onPickMonth) {
+   const req = Math.round(S.settings.officeReqPct * 100);
+-  // Office days and office hours as a share, then days and hours against the target.
++  // Days: the office share and against the target; then the same for hours.
+   const row = (m, label) => {
+     const [hpct, hgap] = hourCells(m);
+     return `<span class="m">${label}</span>
+-      <span>${m.pctDays == null ? '—' : pct(m.pctDays) + '%'}</span>
+-      ${hpct}
++      <span>${pctHtml(m.pctDays, S.settings.officeReqPct)}</span>
+       <span>${m.workDays ? signedHtml(-m.gapDays) : '—'}</span>
++      ${hpct}
+       ${hgap}`;
+   };
+   $('yearList').innerHTML =
+-    `<p class="yl-note">Share of days and hours in the office, and days and hours against the ${req}% target, incl. planned</p>`
+-    + `<div class="yl-row yl-head"><span class="m">Month</span><span title="Office days as a share of work days">Office D.</span><span title="Office hours as a share of available hours">Office H.</span><span title="Office days ahead (+) or short (−) of the target">Days</span><span title="Office hours ahead (+) or short (−) of the target">Hours</span></div>`
++    `<p class="yl-note">Office share and against the ${req}% target, for days then hours, incl. planned. Red is below ${req}%.</p>`
++    + `<div class="yl-row yl-head"><span class="m">Month</span><span title="Office days as a share of work days">Days %</span><span title="Office days ahead (+) or short (−) of the target">Days +/-</span><span title="Office hours as a share of available hours">Hours %</span><span title="Office hours ahead (+) or short (−) of the target">Hours +/-</span></div>`
+     + S.summary.months.map((m, i) => `<button class="yl-row" data-i="${i}" aria-label="Open ${m.name} ${m.year}">${row(m, `${m.name.slice(0, 3)} ${String(m.year).slice(2)}`)}</button>`).join('')
+     + `<div class="yl-row yl-total">${row(S.summary.total, `FY${S.fy}`)}</div>`;
+   $('yearList').querySelectorAll('button[data-i]').forEach((b) => { b.onclick = () => onPickMonth(Number(b.dataset.i)); });
+diff --git a/public/js/log.js b/public/js/log.js
+index 80cac1d..65f703d 100644
+--- a/public/js/log.js
++++ b/public/js/log.js
+@@ -64,7 +64,7 @@ export function renderLog() {
+           <span class="dot"></span>${c.label}
+         </button>`).join('')}
+     </div></div>`).join('') +
+-    `<div class="chipgroup"><div class="chips"><button class="chip clear" data-code=""${locked ? ' disabled' : ''}>Clear day</button></div></div>`;
++    `<div class="chipgroup clearzone"><button class="chip clear" data-code=""${locked ? ' disabled' : ''}><span aria-hidden="true">✕</span>Clear day</button></div>`;
+   $('chipzone').querySelectorAll('.chip').forEach((b) => { b.onclick = () => applyCode(b.dataset.code); });
+ 
+   fill('inTime', rec.in || '', sameDay);
+diff --git a/public/js/stat.js b/public/js/stat.js
+index 4e9ec32..252ee34 100644
+--- a/public/js/stat.js
++++ b/public/js/stat.js
+@@ -22,6 +22,12 @@ export function signed(n, fmt = fmtNum) {
+   return { text: `${n > 0 ? '+' : MINUS}${fmt(Math.abs(n))}`, cls: n > 0 ? 'pos' : 'neg' };
+ }
+ 
++/** True when a share is below the target, compared as it's shown (1 dp). */
++export const belowTarget = (v, req) => v != null && Number(pct(v)) < Math.round(req * 1000) / 10;
++
++/** A percentage, in red when it's below the target. */
++export const pctHtml = (v, req) => (v == null ? '—' : `<span${belowTarget(v, req) ? ' class="pct-low"' : ''}>${pct(v)}%</span>`);
++
+ /** A signed number as a coloured span. */
+ export const signedHtml = (n, fmt) => { const s = signed(n, fmt); return `<span class="num ${s.cls}">${s.text}</span>`; };
+ 
+@@ -42,7 +48,7 @@ export function daysStat(s, req, { label = 'Office days' } = {}) {
+   return block({
+     label,
+     tag: s.futureWorkDays ? 'incl. planned' : '',
+-    value: `${pct(s.pctDays)}<span class="unit">%</span>`,
++    value: `<span${belowTarget(s.pctDays, req) ? ' class="pct-low"' : ''}>${pct(s.pctDays)}<span class="unit">%</span></span>`,
+     chip: `<span class="chip-delta ${sg.cls}" title="Office days ahead (+) or short (−) of ${Math.round(req * 100)}%">${sg.text} d</span>`,
+     sub: `${fmtNum(s.officeDays)} of ${fmtNum(s.workDays)} days · target ${fmtNum(s.requiredOfficeDays)}`,
+     note: s.workingSickDays ? `${s.workingSickDays} working sick not counted` : '',
+diff --git a/public/styles.css b/public/styles.css
+index f6846e0..6cd92fe 100644
+--- a/public/styles.css
++++ b/public/styles.css
+@@ -206,7 +206,11 @@ select.ghost { padding-right: 8px; }
+ .chip .dot { width: 9px; height: 9px; border-radius: 3px; flex: none; box-shadow: inset 0 0 0 1px rgba(0,0,0,.12); }
+ .chip:hover { transform: translateY(-1px); }
+ .chip[aria-pressed="true"] { box-shadow: 0 0 0 2px var(--surface-1), 0 0 0 4px var(--accent); }
+-.chip.clear { background: var(--surface-2); border-color: var(--border); color: var(--text-2); }
++/* Clear day removes the code, so it sits apart from the codes and reads as an action */
++.chipgroup.clearzone { margin-top: 14px; padding-top: 12px; border-top: 1px dashed var(--border); }
++.chip.clear { background: transparent; border-color: color-mix(in srgb, var(--critical) 45%, transparent); color: var(--critical); font-weight: 600; }
++.chip.clear:hover:not(:disabled) { background: var(--critical-soft); }
++.chip.clear:disabled { border-color: var(--border); color: var(--text-3); }
+ 
+ .times { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 16px; }
+ .field label { display: block; font-size: 11px; text-transform: uppercase; letter-spacing: .07em; color: var(--text-3); margin-bottom: 5px; }
+@@ -304,6 +308,10 @@ tr.totals td { border-top: 1px solid var(--border); padding-top: 6px; font-weigh
+   background: var(--warning-soft); color: var(--warning);
+   font-size: 12px; display: flex; gap: 8px; align-items: baseline;
+ }
++.gridnote[hidden] { display: none; }
++.gridnote .gn-text { flex: 1; }
++.gn-close { flex: none; align-self: flex-start; width: 26px; height: 26px; margin: -4px -6px -4px 0; border: 0; border-radius: 6px; background: none; color: inherit; font-size: 13px; line-height: 1; cursor: pointer; }
++.gn-close:hover { background: color-mix(in srgb, var(--warning) 14%, transparent); }
+ 
+ /* ---------- legend ---------- */
+ .legend { display: flex; flex-wrap: wrap; gap: 8px; padding: 0 18px 18px; }
+@@ -403,15 +411,15 @@ a { color: var(--accent); }
+ /* ---------- year by month (phone, Year tab) ---------- */
+ .yearlist { padding: 2px 16px 12px; }
+ .yl-row {
+-  display: grid; grid-template-columns: 56px repeat(2, minmax(0, 1fr)) minmax(0, .8fr) minmax(0, 1.05fr); align-items: center; gap: 6px;
++  display: grid; grid-template-columns: 56px minmax(0, 1fr) minmax(0, .9fr) minmax(0, 1fr) minmax(0, 1.05fr); align-items: center; gap: 6px;
+   width: 100%; min-height: 44px; padding: 0; border: 0; border-top: 1px solid var(--border); background: none;
+   font-size: 14px; text-align: right; font-variant-numeric: tabular-nums; color: var(--text-1);
+ }
+ .yl-row .m { text-align: left; font-weight: 600; color: var(--text-2); }
+ .yl-row > span { white-space: nowrap; }
+ .yl-note { margin: 6px 0 4px; font-size: 12px; color: var(--text-3-strong); }
+-@media (max-width: 380px) { .yl-row { font-size: 13px; gap: 4px; grid-template-columns: 50px repeat(2, minmax(0, 1fr)) minmax(0, .75fr) minmax(0, 1.1fr); } }
+-@media (max-width: 340px) { .yl-row { font-size: 12px; gap: 3px; grid-template-columns: 50px repeat(2, minmax(0, 1fr)) minmax(0, .65fr) minmax(0, 1.05fr); } .yearlist { padding-inline: 10px; } }
++@media (max-width: 380px) { .yl-row { font-size: 13px; gap: 4px; grid-template-columns: 50px minmax(0, 1fr) minmax(0, .85fr) minmax(0, 1fr) minmax(0, 1.1fr); } }
++@media (max-width: 340px) { .yl-row { font-size: 12px; gap: 3px; grid-template-columns: 50px minmax(0, 1fr) minmax(0, .75fr) minmax(0, 1fr) minmax(0, 1.05fr); } .yearlist { padding-inline: 10px; } }
+ .yl-head { min-height: 30px; border-top: 0; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .03em; color: var(--text-3-strong); }
+ /* very narrow phones: a header may take two lines rather than run into the next */
+ .yl-head > span { white-space: normal; line-height: 1.15; }
+@@ -659,6 +667,8 @@ input.time24::placeholder { color: var(--text-3); letter-spacing: .04em; }
+ .stat-block .meter { margin-top: 10px; }
+ .num.pos { color: var(--good-text); }
+ .num.neg { color: var(--critical); }
++/* a percentage below the target */
++.pct-low, .pct-low .unit { color: var(--critical); }
+ .num.zero { color: var(--text-2); }
+ td.stat .num, .yl-row .num, .stat-note .num { font-weight: 600; }
+ .chip-delta { align-self: center; font-size: 12.5px; font-weight: 650; letter-spacing: 0; border-radius: 6px; padding: 2px 7px; }

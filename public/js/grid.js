@@ -1,7 +1,7 @@
 /** The year grid, the key totals under it, the holiday note and the legend. */
 import { S } from './state.js';
-import { $, esc, fmtHrs2, fmtNum, pct, longDate, codeVars } from './format.js';
-import { signedHtml } from './stat.js';
+import { $, esc, fmtHrs2, fmtNum, longDate, codeVars } from './format.js';
+import { signedHtml, pctHtml } from './stat.js';
 import { DAY_NAMES, pad, weekdayOf } from '../lib/dates.js';
 
 /**
@@ -37,9 +37,10 @@ function hourCols(all) {
 }
 
 function dayStatCells(m) {
+  const req = S.settings.officeReqPct;
   return `<td class="stat">${m.workDays || '—'}</td>
     <td class="stat">${m.officeDays || '—'}</td>
-    <td class="stat endgroup">${m.pctDays == null ? '—' : pct(m.pctDays) + '%'}</td>`;
+    <td class="stat endgroup">${pctHtml(m.pctDays, req)}</td>`;
 }
 
 /**
@@ -66,7 +67,7 @@ function hourStatCells(m, all) {
     ? `<td class="stat${flag}"${title}>${m.pastTimedOfficeDays} / ${m.pastOfficeDays}</td>`
     : dash;
   const office = `<td class="stat sep${m.plannedUntimedOfficeDays ? ' est' : ''}"${title}>${m.projOfficeHrs > 0 ? fmtHrs2(m.projOfficeHrs) : '—'}</td>`;
-  const hpct = has && m.projPctHrs != null ? `<td class="stat${flag}"${title}>${pct(m.projPctHrs)}%</td>` : dash;
+  const hpct = has && m.projPctHrs != null ? `<td class="stat${flag}"${title}>${pctHtml(m.projPctHrs, S.settings.officeReqPct)}</td>` : dash;
   const gap = has ? gapCell(m.projGapHrs, m.workDays, fmtHrs2, `${title}`).replace('<td class="stat"', `<td class="stat${flag}"`) : dash;
   if (!all) return office + hpct + gap;
   const avail = `<td class="stat" title="(Office + Home days) × standard day hours">${has ? fmtHrs2(m.availableHrs) : '—'}</td>`;
@@ -156,15 +157,28 @@ export function renderKeyTotals() {
 
 // Victoria sets the Friday before the AFL Grand Final each year once the AFL
 // releases its schedule, so future years genuinely have no date yet.
+// Closing it is remembered in this browser for those years; a new year's
+// missing date shows it again.
+const NOTE_KEY = 'office-attendance:afl-note-closed';
+function closedYears() {
+  try { return JSON.parse(localStorage.getItem(NOTE_KEY) || '[]'); } catch { return []; }
+}
 export function renderGridNote() {
   const el = $('gridnote');
+  const closed = closedYears();
   const years = S.unconfirmed || [];
-  el.hidden = !years.length;
-  if (!years.length) return;
+  const show = years.some((y) => !closed.includes(y));
+  el.hidden = !show;
+  if (!show) return;
   const many = years.length > 1;
-  el.innerHTML = `<span>⚠</span><span>AFL Grand Final Friday ${many ? 'dates' : 'date'} for
+  el.innerHTML = `<span>⚠</span><span class="gn-text">AFL Grand Final Friday ${many ? 'dates' : 'date'} for
     ${years.join(' and ')} ${many ? 'have' : 'has'} not been announced by the Victorian Government yet,
-    so ${many ? 'those days are' : 'that day is'} not marked as a public holiday. Add it by hand once it's confirmed.</span>`;
+    so ${many ? 'those days are' : 'that day is'} not marked as a public holiday. Add it by hand once it's confirmed.</span>
+    <button class="gn-close" type="button" aria-label="Dismiss this note" title="Dismiss">✕</button>`;
+  el.querySelector('.gn-close').onclick = () => {
+    try { localStorage.setItem(NOTE_KEY, JSON.stringify([...new Set([...closed, ...years])])); } catch { /* kept for this visit only */ }
+    el.hidden = true;
+  };
 }
 
 /**
@@ -180,25 +194,25 @@ function hourCells(m) {
   if (!m.workDays) return ['<span>—</span>', '<span>—</span>'];
   const flag = m.untimedPastOfficeDays ? ' class="flag"' : '';
   return [
-    `<span${flag}>${m.projPctHrs == null ? '—' : pct(m.projPctHrs) + '%'}</span>`,
+    `<span${flag}>${pctHtml(m.projPctHrs, S.settings.officeReqPct)}</span>`,
     `<span${flag}>${signedHtml(-m.projGapHrs, fmtHrs2)}</span>`,
   ];
 }
 
 export function renderYearList(onPickMonth) {
   const req = Math.round(S.settings.officeReqPct * 100);
-  // Office days and office hours as a share, then days and hours against the target.
+  // Days: the office share and against the target; then the same for hours.
   const row = (m, label) => {
     const [hpct, hgap] = hourCells(m);
     return `<span class="m">${label}</span>
-      <span>${m.pctDays == null ? '—' : pct(m.pctDays) + '%'}</span>
-      ${hpct}
+      <span>${pctHtml(m.pctDays, S.settings.officeReqPct)}</span>
       <span>${m.workDays ? signedHtml(-m.gapDays) : '—'}</span>
+      ${hpct}
       ${hgap}`;
   };
   $('yearList').innerHTML =
-    `<p class="yl-note">Share of days and hours in the office, and days and hours against the ${req}% target, incl. planned</p>`
-    + `<div class="yl-row yl-head"><span class="m">Month</span><span title="Office days as a share of work days">Office D.</span><span title="Office hours as a share of available hours">Office H.</span><span title="Office days ahead (+) or short (−) of the target">Days</span><span title="Office hours ahead (+) or short (−) of the target">Hours</span></div>`
+    `<p class="yl-note">Office share and against the ${req}% target, for days then hours, incl. planned. Red is below ${req}%.</p>`
+    + `<div class="yl-row yl-head"><span class="m">Month</span><span title="Office days as a share of work days">Days %</span><span title="Office days ahead (+) or short (−) of the target">Days +/-</span><span title="Office hours as a share of available hours">Hours %</span><span title="Office hours ahead (+) or short (−) of the target">Hours +/-</span></div>`
     + S.summary.months.map((m, i) => `<button class="yl-row" data-i="${i}" aria-label="Open ${m.name} ${m.year}">${row(m, `${m.name.slice(0, 3)} ${String(m.year).slice(2)}`)}</button>`).join('')
     + `<div class="yl-row yl-total">${row(S.summary.total, `FY${S.fy}`)}</div>`;
   $('yearList').querySelectorAll('button[data-i]').forEach((b) => { b.onclick = () => onPickMonth(Number(b.dataset.i)); });

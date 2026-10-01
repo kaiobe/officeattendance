@@ -206,7 +206,11 @@ select.ghost { padding-right: 8px; }
 .chip .dot { width: 9px; height: 9px; border-radius: 3px; flex: none; box-shadow: inset 0 0 0 1px rgba(0,0,0,.12); }
 .chip:hover { transform: translateY(-1px); }
 .chip[aria-pressed="true"] { box-shadow: 0 0 0 2px var(--surface-1), 0 0 0 4px var(--accent); }
-.chip.clear { background: var(--surface-2); border-color: var(--border); color: var(--text-2); }
+/* Clear day removes the code, so it sits apart from the codes and reads as an action */
+.chipgroup.clearzone { margin-top: 14px; padding-top: 12px; border-top: 1px dashed var(--border); }
+.chip.clear { background: transparent; border-color: color-mix(in srgb, var(--critical) 45%, transparent); color: var(--critical); font-weight: 600; }
+.chip.clear:hover:not(:disabled) { background: var(--critical-soft); }
+.chip.clear:disabled { border-color: var(--border); color: var(--text-3); }
 
 .times { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 16px; }
 .field label { display: block; font-size: 11px; text-transform: uppercase; letter-spacing: .07em; color: var(--text-3); margin-bottom: 5px; }
@@ -304,6 +308,10 @@ tr.totals td { border-top: 1px solid var(--border); padding-top: 6px; font-weigh
   background: var(--warning-soft); color: var(--warning);
   font-size: 12px; display: flex; gap: 8px; align-items: baseline;
 }
+.gridnote[hidden] { display: none; }
+.gridnote .gn-text { flex: 1; }
+.gn-close { flex: none; align-self: flex-start; width: 26px; height: 26px; margin: -4px -6px -4px 0; border: 0; border-radius: 6px; background: none; color: inherit; font-size: 13px; line-height: 1; cursor: pointer; }
+.gn-close:hover { background: color-mix(in srgb, var(--warning) 14%, transparent); }
 
 /* ---------- legend ---------- */
 .legend { display: flex; flex-wrap: wrap; gap: 8px; padding: 0 18px 18px; }
@@ -403,15 +411,15 @@ a { color: var(--accent); }
 /* ---------- year by month (phone, Year tab) ---------- */
 .yearlist { padding: 2px 16px 12px; }
 .yl-row {
-  display: grid; grid-template-columns: 56px repeat(2, minmax(0, 1fr)) minmax(0, .8fr) minmax(0, 1.05fr); align-items: center; gap: 6px;
+  display: grid; grid-template-columns: 56px minmax(0, 1fr) minmax(0, .9fr) minmax(0, 1fr) minmax(0, 1.05fr); align-items: center; gap: 6px;
   width: 100%; min-height: 44px; padding: 0; border: 0; border-top: 1px solid var(--border); background: none;
   font-size: 14px; text-align: right; font-variant-numeric: tabular-nums; color: var(--text-1);
 }
 .yl-row .m { text-align: left; font-weight: 600; color: var(--text-2); }
 .yl-row > span { white-space: nowrap; }
 .yl-note { margin: 6px 0 4px; font-size: 12px; color: var(--text-3-strong); }
-@media (max-width: 380px) { .yl-row { font-size: 13px; gap: 4px; grid-template-columns: 50px repeat(2, minmax(0, 1fr)) minmax(0, .75fr) minmax(0, 1.1fr); } }
-@media (max-width: 340px) { .yl-row { font-size: 12px; gap: 3px; grid-template-columns: 50px repeat(2, minmax(0, 1fr)) minmax(0, .65fr) minmax(0, 1.05fr); } .yearlist { padding-inline: 10px; } }
+@media (max-width: 380px) { .yl-row { font-size: 13px; gap: 4px; grid-template-columns: 50px minmax(0, 1fr) minmax(0, .85fr) minmax(0, 1fr) minmax(0, 1.1fr); } }
+@media (max-width: 340px) { .yl-row { font-size: 12px; gap: 3px; grid-template-columns: 50px minmax(0, 1fr) minmax(0, .75fr) minmax(0, 1fr) minmax(0, 1.05fr); } .yearlist { padding-inline: 10px; } }
 .yl-head { min-height: 30px; border-top: 0; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .03em; color: var(--text-3-strong); }
 /* very narrow phones: a header may take two lines rather than run into the next */
 .yl-head > span { white-space: normal; line-height: 1.15; }
@@ -659,6 +667,8 @@ input.time24::placeholder { color: var(--text-3); letter-spacing: .04em; }
 .stat-block .meter { margin-top: 10px; }
 .num.pos { color: var(--good-text); }
 .num.neg { color: var(--critical); }
+/* a percentage below the target */
+.pct-low, .pct-low .unit { color: var(--critical); }
 .num.zero { color: var(--text-2); }
 td.stat .num, .yl-row .num, .stat-note .num { font-weight: 600; }
 .chip-delta { align-self: center; font-size: 12.5px; font-weight: 650; letter-spacing: 0; border-radius: 6px; padding: 2px 7px; }

@@ -64,7 +64,7 @@ export function renderLog() {
           <span class="dot"></span>${c.label}
         </button>`).join('')}
     </div></div>`).join('') +
-    `<div class="chipgroup"><div class="chips"><button class="chip clear" data-code=""${locked ? ' disabled' : ''}>Clear day</button></div></div>`;
+    `<div class="chipgroup clearzone"><button class="chip clear" data-code=""${locked ? ' disabled' : ''}><span aria-hidden="true">✕</span>Clear day</button></div>`;
   $('chipzone').querySelectorAll('.chip').forEach((b) => { b.onclick = () => applyCode(b.dataset.code); });
 
   fill('inTime', rec.in || '', sameDay);

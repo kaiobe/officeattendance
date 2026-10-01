@@ -10,6 +10,16 @@ Versions are `MAJOR.MINOR.PATCH`:
 `npm run bump [major|minor|patch]` moves the number in every place it appears
 and opens an entry here. Nothing else should edit a version by hand.
 
+## 1.16.0 - 2026-10-01
+
+- **Phone Year tab:** the columns are now **Days %**, **Days +/-**, **Hours %** and
+  **Hours +/-**: each measure's share, then where it stands against the target.
+- **Red below target:** an office percentage under the target (50%) is red, in the
+  grid's % and H% columns, the phone's Year tab and the Office days card.
+- **The AFL Grand Final note can be closed** with its ✕. It stays closed in that browser
+  for those years, and comes back for a new year whose date isn't announced.
+- **Clear day stands apart** from the codes: below a dashed line, in red, with a ✕.
+
 ## 1.15.0 - 2026-10-01
 
 - **Grid:** the *vs 50%* day column is gone. The office **%** beside it already says it.

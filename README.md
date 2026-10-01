@@ -285,7 +285,7 @@ no times counts as a standard day. The Today card, **Month to date** and **Year 
 stay on days to date.
 
 Ahead and short are a sign and a colour everywhere: **+3.25** in green is ahead,
-**−11.63** in red is short. Hover a card for what the number means.
+**−11.63** in red is short. An office percentage below the target is red too. Hover a card for what the number means.
 
 The grid fits the page at 1280px and wider. Under *Days* it shows Work, Office and the
 office **%**. Under *Hours* it shows Office, **H%** and
@@ -314,10 +314,10 @@ The page splits into three tabs along the bottom:
   **Select** picks a range by touch: tap the first day, then the last, then a code in the
   sheet that slides up. As with Shift-click, only work days change. Weekends, holidays and
   your non-working day are hatched and left alone.
-- **Year** — the tiles and one row per month in place of the 31-column grid: **Office D.**
-  (office days as a % of work days), **Office H.** (office hours as a % of available
-  hours), then **Days** and **Hours** ahead or short of the target, planned days included.
-  Tap a month to open it in the Month tab.
+- **Year** — the tiles and one row per month in place of the 31-column grid: **Days %**
+  (office days as a % of work days), **Days +/-** (ahead or short of the target), then
+  **Hours %** (office hours as a % of available hours) and **Hours +/-**, planned days
+  included. Tap a month to open it in the Month tab.
 
 The date heading is the date picker: tap it to choose a day. *Today* only appears when
 you're on another day.
@@ -435,7 +435,8 @@ The exception is **AFL Grand Final Friday**. Victoria sets it each year once the
 releases its schedule, so it can't be derived. Confirmed dates live in
 `AFL_GRAND_FINAL_FRIDAY` in `public/core/holidays.js` (2025 and 2026 so far). Any Victorian year without
 one shows a note under the grid instead of a guessed date — add the year and date to that
-object when it's announced, or just code the day `PH` by hand.
+object when it's announced, or just code the day `PH` by hand. The note's ✕ closes it in
+that browser for those years.
 
 ---
 

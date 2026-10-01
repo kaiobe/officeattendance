@@ -22,6 +22,12 @@ export function signed(n, fmt = fmtNum) {
   return { text: `${n > 0 ? '+' : MINUS}${fmt(Math.abs(n))}`, cls: n > 0 ? 'pos' : 'neg' };
 }
 
+/** True when a share is below the target, compared as it's shown (1 dp). */
+export const belowTarget = (v, req) => v != null && Number(pct(v)) < Math.round(req * 1000) / 10;
+
+/** A percentage, in red when it's below the target. */
+export const pctHtml = (v, req) => (v == null ? '—' : `<span${belowTarget(v, req) ? ' class="pct-low"' : ''}>${pct(v)}%</span>`);
+
 /** A signed number as a coloured span. */
 export const signedHtml = (n, fmt) => { const s = signed(n, fmt); return `<span class="num ${s.cls}">${s.text}</span>`; };
 
@@ -42,7 +48,7 @@ export function daysStat(s, req, { label = 'Office days' } = {}) {
   return block({
     label,
     tag: s.futureWorkDays ? 'incl. planned' : '',
-    value: `${pct(s.pctDays)}<span class="unit">%</span>`,
+    value: `<span${belowTarget(s.pctDays, req) ? ' class="pct-low"' : ''}>${pct(s.pctDays)}<span class="unit">%</span></span>`,
     chip: `<span class="chip-delta ${sg.cls}" title="Office days ahead (+) or short (−) of ${Math.round(req * 100)}%">${sg.text} d</span>`,
     sub: `${fmtNum(s.officeDays)} of ${fmtNum(s.workDays)} days · target ${fmtNum(s.requiredOfficeDays)}`,
     note: s.workingSickDays ? `${s.workingSickDays} working sick not counted` : '',
