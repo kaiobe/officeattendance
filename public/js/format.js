@@ -13,8 +13,8 @@ export const nowHHMM = (timeZone, date = new Date()) => new Intl.DateTimeFormat(
 }).format(date);
 
 /*
- * Hours are shown as time, not decimals: 8.75 is 8h 45m. Two forms:
- *   fmtDur   - words, where there's room (cards, notes): "8h 45m", "45m", "8h"
+ * Hours are shown as time, not decimals: 8.75 is 8h45m. Two forms:
+ *   fmtDur   - words, where there's room (cards, notes): "8h45m", "45m", "8h"
  *   fmtClock - compact, for tight columns (grid, year list): "8:45", "113:55"
  * Both round to the nearest minute. Where a gap sits beside the figures it
  * comes from, take it from the rounded minutes (minutes()) so they add up.
@@ -23,13 +23,13 @@ export const nowHHMM = (timeZone, date = new Date()) => new Intl.DateTimeFormat(
 /** Hours as whole minutes. */
 export const minutes = (h) => Math.round((h || 0) * 60 + 1e-9);
 
-/** "8h 45m", "8h", "45m", "0m"; "1,234h 5m" past a thousand. Negative input shows its size only. */
+/** "8h45m", "8h", "45m", "0m"; "1,234h5m" past a thousand. Negative input shows its size only. */
 export function fmtDur(h) {
   const m = Math.abs(minutes(h));
   const hh = Math.floor(m / 60), mm = m % 60;
   if (!hh) return `${mm}m`;
   const hs = hh.toLocaleString('en-AU');
-  return mm ? `${hs}h ${mm}m` : `${hs}h`;
+  return mm ? `${hs}h${mm}m` : `${hs}h`;
 }
 
 /** "8:45", "0:45", "113:55". Negative input shows its size only. */

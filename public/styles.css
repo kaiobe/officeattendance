@@ -410,7 +410,7 @@ a { color: var(--accent); }
 /* ---------- year by month (phone, Year tab) ---------- */
 .yearlist { padding: 2px 16px 12px; }
 .yl-row {
-  display: grid; grid-template-columns: 54px minmax(0, 1fr) minmax(0, .85fr) minmax(0, 1fr) minmax(0, 1.2fr); align-items: center; gap: 6px;
+  display: grid; grid-template-columns: 58px minmax(52px, 1fr) minmax(60px, 1fr) minmax(64px, 1fr) minmax(70px, 1.1fr); align-items: center; gap: 6px;
   width: 100%; min-height: 44px; padding: 0; border: 0; border-top: 1px solid var(--border); background: none;
   font-size: 14px; text-align: right; font-variant-numeric: tabular-nums; color: var(--text-1);
 }

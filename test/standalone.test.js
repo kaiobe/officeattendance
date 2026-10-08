@@ -191,11 +191,11 @@ test('time boxes are 24-hour: however a time is typed, it becomes HH:MM', () => 
 
 test('hours show as time: words where there is room, h:mm in columns, typed either way', async () => {
   const { fmtDur, fmtClock, minutes, parseHours } = await import('../public/js/format.js');
-  assert.equal(fmtDur(8.75), '8h 45m');
+  assert.equal(fmtDur(8.75), '8h45m');
   assert.equal(fmtDur(8), '8h');
   assert.equal(fmtDur(0.75), '45m');
-  assert.equal(fmtDur(48.125), '48h 8m', 'half a minute rounds up');
-  assert.equal(fmtDur(1494.25), '1,494h 15m');
+  assert.equal(fmtDur(48.125), '48h8m', 'half a minute rounds up');
+  assert.equal(fmtDur(1494.25), '1,494h15m');
   assert.equal(fmtClock(113 + 55 / 60), '113:55');
   assert.equal(fmtClock(0.75), '0:45');
   assert.equal(fmtClock(1494.25), '1494:15');

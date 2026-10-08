@@ -289,11 +289,11 @@ with the planned hours and where you stand today in the note. A planned office d
 no times counts as a standard day. The Today card, **Month to date** and **Year to date**
 stay on days to date.
 
-Ahead and short are a sign and a colour everywhere: **+3h 15m** in green is ahead,
-**−11h 38m** in red is short. An office percentage below the target is red too. Hover a card for what the number means.
+Ahead and short are a sign and a colour everywhere: **+3h15m** in green is ahead,
+**−11h38m** in red is short. An office percentage below the target is red too. Hover a card for what the number means.
 
 **Hours are shown as time, never decimals.** Where there's room (the cards, their notes,
-the log card) they read as words: *8h 45m*, *45m*. In tight columns (the grid and the
+the log card) they read as words: *8h45m*, *45m*. In tight columns (the grid and the
 phone's year list) they're compact: *8:45*, *113:55*, *+26:25*. Both round to the
 minute, and a gap is worked out from the rounded figures beside it, so they always add
 up. The **Standard day** setting is typed the same way: `8:45`, `8h 45m`, `845` or the

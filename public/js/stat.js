@@ -70,7 +70,7 @@ export function hoursStat(s, req, std, { plans = false, label = 'Office hours' }
   if (!work) return block({ label, tag, value: '—', sub: 'No work days yet', meter: bar(0, req, 'idle'), title: why });
   const office = plans ? s.projOfficeHrs : s.pastOfficeHrs;
   const need = plans ? s.projReqHrs : s.pastReqHrs;
-  // From the rounded minutes, so "60h 25m of 48h 8m" and +12h 17m add up.
+  // From the rounded minutes, so "60h25m of 48h8m" and +12h17m add up.
   const surplus = (minutes(office) - minutes(need)) / 60;
   const sg = signed(surplus, fmtDur);
   const notes = [];
@@ -88,7 +88,7 @@ export function hoursStat(s, req, std, { plans = false, label = 'Office hours' }
   });
 }
 
-/** A headline duration with its sign and colour: +12h 17m, with the h and m small. */
+/** A headline duration with its sign and colour: +12h17m, with the h and m small. */
 function signedDurHtml(n) {
   const sg = signed(n, fmtDur);
   const sign = sg.cls === 'zero' ? '' : sg.text[0];

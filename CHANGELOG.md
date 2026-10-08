@@ -10,6 +10,13 @@ Versions are `MAJOR.MINOR.PATCH`:
 `npm run bump [major|minor|patch]` moves the number in every place it appears
 and opens an entry here. Nothing else should edit a version by hand.
 
+## 1.18.1 - 2026-10-08
+
+- Hours and minutes run together with no space: **+3h15m**, *60h25m of 48h8m*, *8h49m so far*.
+  The grid and Year tab keep their compact *3:15* form.
+- Phone Year tab: every column header fits on one line again, and month names are no longer
+  clipped by a couple of pixels.
+
 ## 1.18.0 - 2026-10-08
 
 - **Hours as time, not decimals.** 8.75 hours now reads 8h 45m.
