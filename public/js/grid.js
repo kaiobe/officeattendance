@@ -1,6 +1,6 @@
 /** The year grid, the key totals under it, the holiday note and the legend. */
 import { S } from './state.js';
-import { $, esc, fmtHrs2, fmtNum, longDate, codeVars } from './format.js';
+import { $, esc, fmtClock, minutes, fmtNum, longDate, codeVars } from './format.js';
 import { signedHtml, pctHtml } from './stat.js';
 import { DAY_NAMES, pad, weekdayOf } from '../lib/dates.js';
 
@@ -54,6 +54,9 @@ function dayStatCells(m) {
  * times. While some don't, H% and the gap get an amber mark with the reason
  * on hover: the number may be low only because times are missing.
  */
+/** The hours gap (positive = short), from the rounded minutes so Office, Req and Gap add up on screen. */
+const hourGap = (m) => (minutes(m.projReqHrs) - minutes(m.projOfficeHrs)) / 60;
+
 function hourStatCells(m, all) {
   const has = m.workDays > 0;
   const patchy = m.untimedPastOfficeDays > 0;
@@ -66,13 +69,13 @@ function hourStatCells(m, all) {
   const timed = m.pastOfficeDays
     ? `<td class="stat${flag}"${title}>${m.pastTimedOfficeDays} / ${m.pastOfficeDays}</td>`
     : dash;
-  const office = `<td class="stat sep${m.plannedUntimedOfficeDays ? ' est' : ''}"${title}>${m.projOfficeHrs > 0 ? fmtHrs2(m.projOfficeHrs) : '—'}</td>`;
+  const office = `<td class="stat sep${m.plannedUntimedOfficeDays ? ' est' : ''}"${title}>${m.projOfficeHrs > 0 ? fmtClock(m.projOfficeHrs) : '—'}</td>`;
   const hpct = has && m.projPctHrs != null ? `<td class="stat${flag}"${title}>${pctHtml(m.projPctHrs, S.settings.officeReqPct)}</td>` : dash;
-  const gap = has ? gapCell(m.projGapHrs, m.workDays, fmtHrs2, `${title}`).replace('<td class="stat"', `<td class="stat${flag}"`) : dash;
+  const gap = has ? gapCell(hourGap(m), m.workDays, fmtClock, `${title}`).replace('<td class="stat"', `<td class="stat${flag}"`) : dash;
   if (!all) return office + hpct + gap;
-  const avail = `<td class="stat" title="(Office + Home days) × standard day hours">${has ? fmtHrs2(m.availableHrs) : '—'}</td>`;
-  const reqH = `<td class="stat">${has ? fmtHrs2(m.projReqHrs) : '—'}</td>`;
-  const avg = `<td class="stat">${m.pastAvgHrsPerOfficeDay == null ? '—' : fmtHrs2(m.pastAvgHrsPerOfficeDay)}</td>`;
+  const avail = `<td class="stat" title="(Office + Home days) × standard day hours">${has ? fmtClock(m.availableHrs) : '—'}</td>`;
+  const reqH = `<td class="stat">${has ? fmtClock(m.projReqHrs) : '—'}</td>`;
+  const avg = `<td class="stat">${m.pastAvgHrsPerOfficeDay == null ? '—' : fmtClock(m.pastAvgHrsPerOfficeDay)}</td>`;
   return office + avail + hpct + reqH + gap + avg + timed;
 }
 
@@ -195,7 +198,7 @@ function hourCells(m) {
   const flag = m.untimedPastOfficeDays ? ' class="flag"' : '';
   return [
     `<span${flag}>${pctHtml(m.projPctHrs, S.settings.officeReqPct)}</span>`,
-    `<span${flag}>${signedHtml(-m.projGapHrs, fmtHrs2)}</span>`,
+    `<span${flag}>${signedHtml(-hourGap(m), fmtClock)}</span>`,
   ];
 }
 

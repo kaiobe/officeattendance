@@ -274,7 +274,7 @@ or Ctrl+Shift-click to add a range.
 A range or a set of picked days recodes only the work days in it: weekends, public
 holidays and your non-working day are left as they are, so the leave doesn't inflate the
 day counts. Weekends show a quiet **W**. A dot in the corner of a cell means hours are recorded; a small triangle means there's a comment.
-Gaps to the target read in words — "20.75 short", "3.00 ahead" — the same way as the tiles.
+Gaps to the target are signed, the same way as the cards: +3:00 ahead, −20:45 short.
 
 **Hours are measured against the office target.** "Office hours vs 50%" is how many hours
 you're ahead or short of what the requirement asks for on the days to date: 50% of a
@@ -289,8 +289,16 @@ with the planned hours and where you stand today in the note. A planned office d
 no times counts as a standard day. The Today card, **Month to date** and **Year to date**
 stay on days to date.
 
-Ahead and short are a sign and a colour everywhere: **+3.25** in green is ahead,
-**−11.63** in red is short. An office percentage below the target is red too. Hover a card for what the number means.
+Ahead and short are a sign and a colour everywhere: **+3h 15m** in green is ahead,
+**−11h 38m** in red is short. An office percentage below the target is red too. Hover a card for what the number means.
+
+**Hours are shown as time, never decimals.** Where there's room (the cards, their notes,
+the log card) they read as words: *8h 45m*, *45m*. In tight columns (the grid and the
+phone's year list) they're compact: *8:45*, *113:55*, *+26:25*. Both round to the
+minute, and a gap is worked out from the rounded figures beside it, so they always add
+up. The **Standard day** setting is typed the same way: `8:45`, `8h 45m`, `845` or the
+old `8.75` all mean 8 hours 45 minutes. The CSV export keeps decimal hours, which is
+what a spreadsheet needs to add them up.
 
 The grid fits the page at 1280px and wider. Under *Days* it shows Work, Office and the
 office **%**. Under *Hours* it shows Office, **H%** and

@@ -1,6 +1,6 @@
 /** The Settings dialog: working pattern, years, calendar fill, clearing, backup. */
 import { S, api, loadState, refresh } from './state.js';
-import { $, shortDate, plural, builtAt } from './format.js';
+import { $, shortDate, plural, builtAt, fmtClock, parseHours } from './format.js';
 import { getTheme, setTheme, onThemeChange, ICON } from './theme.js';
 import { askConfirm, flash, attempt } from './dialogs.js';
 import { addDays, fyStart, fyEnd } from '../lib/dates.js';
@@ -31,8 +31,15 @@ function report(fn) {
  * Working pattern fields save the moment they change - there's no Save
  * button to forget. A refused value is explained in the dialog and put back.
  */
+/** A typed standard day (8:45, 8h 45m, 845 or 8.75) as hours, or a plain refusal. */
+function readHours(v) {
+  const h = parseHours(v);
+  if (h == null) throw new Error('Type the standard day as hours and minutes, like 8:45.');
+  return h;
+}
+
 const FIELDS = {
-  setStd: { key: 'stdDayHours', read: (v) => Number(v), show: (s) => s.stdDayHours },
+  setStd: { key: 'stdDayHours', read: readHours, show: (s) => fmtClock(s.stdDayHours) },
   setReq: { key: 'officeReqPct', read: (v) => Number(v) / 100, show: (s) => Math.round(s.officeReqPct * 100) },
   setNw: { key: 'nonWorkingWeekday', read: (v) => Number(v), show: (s) => s.nonWorkingWeekday },
   setState: { key: 'holidayState', read: (v) => v, show: (s) => s.holidayState },
@@ -77,6 +84,7 @@ async function saveField(id) {
   try {
     const r = await api('/api/settings', { method: 'PUT', body: JSON.stringify({ [f.key]: f.read(el.value) }) });
     await refresh();
+    el.value = f.show(S.settings);             // tidied: 845 shows as 8:45
     saved();
     // A new non-working day or state moves the calendar's own days by itself.
     if (r.moved) {

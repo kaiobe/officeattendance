@@ -1,6 +1,6 @@
 /** The "Log a day" card: the selected date, the code chips, times and comment. */
 import { S, saveDays, serverToday, loadState } from './state.js';
-import { $, longDate, shortDate, nowHHMM, fmtHrs, plural, codeVars } from './format.js';
+import { $, longDate, shortDate, nowHHMM, fmtDur, plural, codeVars } from './format.js';
 import { askConfirm, flash } from './dialogs.js';
 import { isTime } from './timefield.js';
 import { DAY_NAMES, weekdayOf, minutesBetween, isWeekend, fyOfDate } from '../lib/dates.js';
@@ -90,10 +90,10 @@ function updateHrs() {
   const overnight = inV && outV && outV < inV;
   let text = '';
   if (inV && outV) {
-    text = `${fmtHrs(minutesBetween(inV, outV) / 60)} hrs${overnight ? ' · Out is before In' : ''}`;
+    text = `${fmtDur(minutesBetween(inV, outV) / 60)}${overnight ? ' · Out is before In' : ''}`;
   } else if (inV && !outV && S.sel === S.today && clockTime() > inV) {
     const mins = minutesBetween(inV, clockTime());
-    text = `${Math.floor(mins / 60)} h ${mins % 60} m so far`;
+    text = `${fmtDur(mins / 60)} so far`;
   }
   el.textContent = text;
   el.classList.toggle('warn', !!overnight);

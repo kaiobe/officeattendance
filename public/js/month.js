@@ -9,7 +9,7 @@
  * Shift-click on the desktop grid.
  */
 import { S, loadState } from './state.js';
-import { $, esc, fmtHrs, fmtHrs2, plural, codeVars } from './format.js';
+import { $, esc, fmtDur, plural, codeVars } from './format.js';
 import { daysStat, hoursStat } from './stat.js';
 import { describe } from './grid.js';
 import { attempt } from './dialogs.js';
@@ -147,7 +147,7 @@ export function renderMonth() {
   const req = S.settings.officeReqPct, std = S.settings.stdDayHours;
   const avg = m.pastAvgHrsPerOfficeDay;
   $('mStats').innerHTML = daysStat(m, req, { label: 'Days' }) + hoursStat(m, req, std, { plans: true, label: 'Hours' })
-    + `<p class="mfoot">${avg == null ? '' : `Avg office day ${fmtHrs2(avg)} h · std ${fmtHrs(std)} h`}</p>`;
+    + `<p class="mfoot">${avg == null ? '' : `Avg office day ${fmtDur(avg)} · std ${fmtDur(std)}`}</p>`;
   renderSheet();
 }
 

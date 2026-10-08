@@ -188,3 +188,20 @@ test('time boxes are 24-hour: however a time is typed, it becomes HH:MM', () => 
     assert.equal(normaliseTime(bad), null, JSON.stringify(bad));
   }
 });
+
+test('hours show as time: words where there is room, h:mm in columns, typed either way', async () => {
+  const { fmtDur, fmtClock, minutes, parseHours } = await import('../public/js/format.js');
+  assert.equal(fmtDur(8.75), '8h 45m');
+  assert.equal(fmtDur(8), '8h');
+  assert.equal(fmtDur(0.75), '45m');
+  assert.equal(fmtDur(48.125), '48h 8m', 'half a minute rounds up');
+  assert.equal(fmtDur(1494.25), '1,494h 15m');
+  assert.equal(fmtClock(113 + 55 / 60), '113:55');
+  assert.equal(fmtClock(0.75), '0:45');
+  assert.equal(fmtClock(1494.25), '1494:15');
+  assert.equal(minutes(8.82), 529);
+  for (const [typed, want] of Object.entries({ '30': 30, '8:45': 8.75, '8h 45m': 8.75, '8h45m': 8.75, '8h': 8, '45m': 0.75, '845': 8.75, '1030': 10.5, '8': 8, '8.75': 8.75, '8,75': 8.75, '7.6': 7.6 })) {
+    assert.equal(parseHours(typed), want, typed);
+  }
+  for (const bad of ['', 'abc', '9:60', '8h 75m', '12345']) assert.equal(parseHours(bad), null, bad);
+});
