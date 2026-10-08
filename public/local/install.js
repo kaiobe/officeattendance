@@ -14,7 +14,7 @@ import { NEW_PHONE_SETTINGS, FIRST_PHONE_SETTINGS } from './defaults.js';
 import { setupCloud } from './cloud-ui.js';
 import { createUpdater } from './update.js';
 import { runtime } from '../js/state.js';
-import { $, plural } from '../js/format.js';
+import { $, plural, fmtClock, parseHours } from '../js/format.js';
 import { flash, attempt } from '../js/dialogs.js';
 import { pad } from '../lib/dates.js';
 
@@ -179,7 +179,8 @@ function welcome(store, saveMeta, cloudUi) {
   $('wState').innerHTML = Object.entries(STATES).map(([k, name]) => `<option value="${k}">${name}</option>`).join('');
   $('wState').value = s.holidayState;
   $('wNw').value = String(s.nonWorkingWeekday);
-  $('wStd').value = s.stdDayHours;
+  $('wStd').value = fmtClock(s.stdDayHours);
+  $('wStd').onchange = () => { const h = parseHours($('wStd').value); if (h != null) $('wStd').value = fmtClock(h); };
   $('wReq').value = Math.round(s.officeReqPct * 100);
   $('wIn').value = s.defaultIn;
   $('wOut').value = s.defaultOut;
@@ -200,7 +201,7 @@ function welcome(store, saveMeta, cloudUi) {
         await runtime.transport('PUT', '/api/settings', {
           holidayState: $('wState').value,
           nonWorkingWeekday: Number($('wNw').value),
-          stdDayHours: Number($('wStd').value),
+          stdDayHours: (() => { const h = parseHours($('wStd').value); if (h == null) throw new Error('Type the standard day as hours and minutes, like 8:45.'); return h; })(),
           officeReqPct: Number($('wReq').value) / 100,
           defaultIn: $('wIn').value || NEW_PHONE.defaultIn,
           defaultOut: $('wOut').value || NEW_PHONE.defaultOut,

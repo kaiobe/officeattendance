@@ -10,6 +10,20 @@ Versions are `MAJOR.MINOR.PATCH`:
 `npm run bump [major|minor|patch]` moves the number in every place it appears
 and opens an entry here. Nothing else should edit a version by hand.
 
+## 1.18.0 - 2026-10-08
+
+- **Hours as time, not decimals.** 8.75 hours now reads 8h 45m.
+  - Where there's room (the cards, their notes, the log card, the Month tab) hours read as
+    words: *+12h 17m*, *60h 25m of 48h 8m*, *8h 49m so far*.
+  - In tight columns (the desktop grid and the phone's Year tab) they're compact: *113:55*,
+    *+26:25*.
+  - Everything rounds to the minute, and each gap is worked out from the rounded figures
+    shown beside it, so they always add up.
+- **Standard day is typed as hours and minutes** in Settings and on the setup screen:
+  8:45, 8h 45m or 845 (and the old 8.75 still works). It's tidied to 8:45 as you leave the
+  box. Nothing stored changes.
+- The CSV export keeps decimal hours, so a spreadsheet can add them up.
+
 ## 1.17.3 - 2026-10-01
 
 - **Holiday names everywhere.** Public holidays that came from the spreadsheet import, or
