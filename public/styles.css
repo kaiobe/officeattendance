@@ -110,7 +110,6 @@ header.top {
 .top-in { max-width: 1400px; margin: 0 auto; padding: 12px 20px; display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
 .brand { display: flex; align-items: baseline; gap: 10px; margin-right: auto; }
 .brand h1 { font-size: 16px; font-weight: 650; margin: 0; letter-spacing: -.01em; }
-.brand .sub { color: var(--text-3); font-size: 12px; }
 .ghost {
   background: var(--surface-1); border: 1px solid var(--border); color: var(--text-2);
   border-radius: 8px; padding: 6px 11px; font-size: 13px; transition: background .12s, border-color .12s;
@@ -175,7 +174,6 @@ select.ghost { padding-right: 8px; }
   #tilesCard .spacer { display: none; }
   .seg .lbl-long { display: none; }
   .seg .lbl-short { display: inline; }
-  #tilesTitle .through { display: none; }   /* the tab already says "to date" */
   #monthSel { flex: 1 1 100%; }
 }
 
@@ -195,14 +193,13 @@ select.ghost { padding-right: 8px; }
 }
 .rangenote button { background: none; border: 0; color: var(--accent); text-decoration: underline; padding: 0; font-size: 12px; margin-left: auto; }
 
-.chipgroup .glabel { font-size: 11px; text-transform: uppercase; letter-spacing: .07em; color: var(--text-3); margin-bottom: 6px; }
 .chips { display: flex; flex-wrap: wrap; gap: 6px; }
 .chip {
   border: 1px solid transparent; border-radius: 8px; padding: 5px 10px;
   font-size: 12.5px; font-weight: 560; display: inline-flex; align-items: center; gap: 6px;
   transition: transform .08s, box-shadow .12s;
 }
-.chipgroup { margin-top: 10px; }
+.chipgroup { margin-top: 12px; }     /* groups read by spacing alone */
 .chip .dot { width: 9px; height: 9px; border-radius: 3px; flex: none; box-shadow: inset 0 0 0 1px rgba(0,0,0,.12); }
 .chip:hover { transform: translateY(-1px); }
 .chip[aria-pressed="true"] { box-shadow: 0 0 0 2px var(--surface-1), 0 0 0 4px var(--accent); }
@@ -236,7 +233,6 @@ select.ghost { padding-right: 8px; }
 .tile .value { font-size: 30px; font-weight: 640; letter-spacing: -.025em; line-height: 1.05; }
 .tile.hero .value { font-size: 46px; }
 .tile .unit { font-size: 15px; font-weight: 500; color: var(--text-2); margin-left: 2px; letter-spacing: 0; }
-.tile .sub { font-size: 12px; color: var(--text-3); margin-top: 5px; font-variant-numeric: tabular-nums; }
 .status { display: inline-flex; align-self: flex-start; align-items: center; gap: 5px; font-size: 12px; font-weight: 560; border-radius: 6px; padding: 2px 7px; margin-top: 8px; }
 .status.good { color: var(--good); background: var(--good-soft); }
 .status.warning { color: var(--warning); background: var(--warning-soft); }
@@ -301,7 +297,6 @@ tr.totals td { border-top: 1px solid var(--border); padding-top: 6px; font-weigh
 .keytotals .kt { display: flex; align-items: baseline; gap: 8px; }
 .keytotals .kt .k { font-size: 12px; color: var(--text-3); }
 .keytotals .kt .v { font-size: 15px; font-weight: 620; font-variant-numeric: tabular-nums; }
-.keytotals .kt .f { font-size: 11px; color: var(--text-3); }
 
 .gridnote {
   margin: 0 18px 14px; padding: 7px 11px; border-radius: 8px;
@@ -358,16 +353,18 @@ a { color: var(--accent); }
 }
 .punched button { margin-left: auto; border: 0; background: none; color: inherit; font-weight: 650; text-decoration: underline; min-height: 32px; padding: 0 6px; }
 .timeacts .hrs.sofar { color: var(--text-1); font-weight: 560; }
+/* still at work: a live dot says the hours are counting */
+.timeacts .hrs.sofar::before { content: ""; display: inline-block; width: 7px; height: 7px; margin-right: 6px; border-radius: 50%; background: var(--good); vertical-align: 1px; animation: live 1.6s ease-in-out infinite; }
+@keyframes live { 50% { opacity: .35; } }
+@media (prefers-reduced-motion: reduce) { .timeacts .hrs.sofar::before { animation: none; } }
 
 /* ---------- this month so far (phone, Today tab) ---------- */
 #soFar { padding: 14px 16px 16px; display: grid; gap: 8px; }
 .sf-head { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
 .sf-head h2 { font-size: 13px; font-weight: 650; margin: 0; }
-.sf-head span { font-size: 12px; color: var(--text-3-strong); }
 .sf-main { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
 .sf-val { font-size: 32px; font-weight: 680; letter-spacing: -.03em; line-height: 1.05; font-variant-numeric: tabular-nums; }
 .sf-val .unit { font-size: 15px; font-weight: 500; color: var(--text-2); }
-.sf-main .sub { font-size: 13px; color: var(--text-2); }
 .sf-main .status { margin: 0 0 0 auto; }
 .sf-foot { font-size: 12px; color: var(--text-3-strong); }
 #soFar .meter { margin-top: 2px; }
@@ -393,19 +390,12 @@ a { color: var(--accent); }
 .mcell.today { box-shadow: 0 0 0 2px var(--surface-1), 0 0 0 4px var(--accent); opacity: 1; }
 .mcell.sel:not(.today) { box-shadow: 0 0 0 2px var(--surface-1), 0 0 0 4px var(--text-2); opacity: 1; }
 .mcell.pad { visibility: hidden; }
-.mlegend { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 11.5px; color: var(--text-3-strong); padding: 2px 2px 0; }
-.mlegend span { display: inline-flex; align-items: center; gap: 5px; }
-.mlegend i { display: inline-block; }
-.mlegend .k-dot { width: 5px; height: 5px; border-radius: 50%; background: var(--text-2); }
-.mlegend .k-plan { width: 12px; height: 9px; border-radius: 3px; background: var(--accent); opacity: .35; }
 .mstats { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 16px; padding: 12px 16px 16px; border-top: 1px solid var(--border); }
 .mstat { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
 .mstat .lbl { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .08em; color: var(--text-3-strong); }
 .mstat .val { font-size: 26px; font-weight: 680; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
 .mstat .val .unit { font-size: 14px; font-weight: 500; color: var(--text-2); }
-.mstat .sub { font-size: 12.5px; color: var(--text-2); }
 .mstat .status { margin-top: 4px; }
-.mfoot { grid-column: 1 / -1; margin: 0; font-size: 12px; color: var(--text-3-strong); }
 
 /* ---------- year by month (phone, Year tab) ---------- */
 .yearlist { padding: 2px 16px 12px; }
@@ -416,7 +406,6 @@ a { color: var(--accent); }
 }
 .yl-row .m { text-align: left; font-weight: 600; color: var(--text-2); }
 .yl-row > span { white-space: nowrap; }
-.yl-note { margin: 6px 0 4px; font-size: 12px; color: var(--text-3-strong); }
 @media (max-width: 380px) { .yl-row { font-size: 13px; gap: 4px; grid-template-columns: 50px minmax(0, 1fr) minmax(0, .85fr) minmax(0, 1fr) minmax(0, 1.1fr); } }
 @media (max-width: 340px) { .yl-row { font-size: 12px; gap: 3px; grid-template-columns: 50px minmax(0, 1fr) minmax(0, .75fr) minmax(0, 1fr) minmax(0, 1.05fr); } .yearlist { padding-inline: 10px; } }
 .yl-head { min-height: 30px; border-top: 0; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .03em; color: var(--text-3-strong); }
@@ -446,7 +435,7 @@ a { color: var(--accent); }
   body { padding-bottom: calc(64px + env(safe-area-inset-bottom, 0px)); }
   .wrap { padding: 12px 12px 24px; gap: 12px; }
   .top-in { padding: 6px 6px 6px 16px; gap: 8px; flex-wrap: nowrap; }
-  .brand .sub, .name-long { display: none; }
+  .name-long { display: none; }
   .name-short { display: inline; }
   .brand h1 { font-size: 17px; }
   #fysel { min-height: 36px; border-radius: 999px; padding: 0 10px; }
@@ -465,7 +454,6 @@ a { color: var(--accent); }
 }
 
 /* A Shift key only exists where there's a keyboard. */
-@media (hover: none) { .shift-hint { display: none; } }
 .meter .fill.info { background: var(--accent); }
 
 /* Thumb-sized day arrows. Here at the end so they win over the desktop rule above. */
@@ -513,15 +501,14 @@ td.stat.patchy, td.stat.patchy span { color: var(--warning); font-weight: 560; }
 .logcol.what { grid-area: what; border-right: 0; padding: 0 0 0 22px; }
 .logcol.hours .times { margin-top: 0; }
 .comment-field { margin-top: 14px; }
-.locknote { margin: 0 0 12px; padding: 8px 12px; border-radius: 9px; background: var(--surface-2); border: 1px solid var(--border); font-size: 13px; color: var(--text-2); }
-#logCard.locked :is(.chip, .punch, .tiny, input):disabled { opacity: .45; cursor: not-allowed; }
+#logCard.weekend :is(.chip, .punch, .tiny, input):disabled { opacity: .45; cursor: not-allowed; }
+/* A weekend on its own: just its W, nothing to try and be refused */
+#logCard.locked :is(.logcol.hours, .comment-field) { display: none; }
+#logCard.locked .chip:disabled { opacity: 1; cursor: default; }
 button.dayline { display: block; border: 0; background: none; padding: 0; text-align: left; cursor: pointer; color: inherit; font: inherit; font-size: 20px; font-weight: 620; letter-spacing: -.015em; }
 button.dayline:hover .dl-long { text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 3px; }
 button.dayline:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 4px; }
 .dayline .pick, .dayline .today-tag { display: none; }
-.keyhint { margin: 8px 0 0; font-size: 11.5px; color: var(--text-3); }
-.keyhint kbd { font: inherit; font-size: 11px; border: 1px solid var(--border); border-bottom-width: 2px; border-radius: 4px; padding: 0 4px; background: var(--surface-1); }
-@media (max-width: 940px), (hover: none) { .keyhint { display: none; } }
 @media (max-width: 940px) {
   .logrow { grid-template-columns: minmax(0, 1fr); grid-template-areas: none; }
   .logcol.when, .logcol.hours, .logcol.what { grid-area: auto; }
@@ -596,7 +583,6 @@ button.dayline:focus-visible { outline: 2px solid var(--accent); outline-offset:
 .set-item:disabled { opacity: .5; cursor: default; }
 .set-item::after { content: "›"; margin-left: auto; font-size: 20px; color: var(--text-3); }
 .set-item-t { display: grid; gap: 1px; font-size: 14.5px; }
-.set-item-t small { font-size: 12.5px; color: var(--text-3); }
 .set-item.danger .set-item-t > span { color: var(--critical); }
 .set-backup { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
 .set-backup .ghost { min-height: 44px; display: grid; place-items: center; text-align: center; }
@@ -607,7 +593,6 @@ button.dayline:focus-visible { outline: 2px solid var(--accent); outline-offset:
 /* ---------- selecting a range by touch (Month tab) ---------- */
 .msel { min-height: 44px; padding: 0 12px; }
 .msel[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: #fff; }
-.mhint { margin: 0; padding: 8px 16px 0; font-size: 13px; color: var(--accent); font-weight: 560; }
 .mcell.picked { box-shadow: 0 0 0 2px var(--surface-1), 0 0 0 4px var(--accent); opacity: 1; }
 .mcell.picked::after {
   content: "✓"; position: absolute; right: 3px; top: 3px; width: 15px; height: 15px; border-radius: 50%;
@@ -635,10 +620,8 @@ button.dayline:focus-visible { outline: 2px solid var(--accent); outline-offset:
 /* ---------- standalone version: first run, backup reminder ---------- */
 #welcomeDlg { width: min(460px, calc(100vw - 24px)); max-height: calc(100dvh - 24px); overflow: auto; }
 #welcomeDlg .dlg-body { gap: 14px; }
-.welcome-lead { margin: 0; font-size: 14.5px; line-height: 1.5; color: var(--text-1); }
 #welcomeDlg .actions { justify-content: space-between; }
 #welcomeDlg .primary { min-height: 44px; padding: 0 22px; font-size: 15px; }
-.install-tip { background: var(--surface-2); border-radius: 9px; padding: 9px 11px; }
 .nudge {
   display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; margin-bottom: 16px; padding: 12px 16px;
   border-radius: var(--radius); background: var(--warning-soft); color: var(--text-1); border: 1px solid var(--border); font-size: 13.5px;
@@ -646,7 +629,6 @@ button.dayline:focus-visible { outline: 2px solid var(--accent); outline-offset:
 .nudge > span:first-child { flex: 1 1 260px; }
 .nudge-acts { display: flex; gap: 8px; }
 .nudge-acts button { min-height: 38px; }
-.set-note { margin: 4px 0 0; font-size: 12.5px; color: var(--text-2); line-height: 1.45; }
 
 /* 24-hour time boxes (see js/timefield.js): room for HH:MM, figures lined up */
 input.time24 { font-variant-numeric: tabular-nums; letter-spacing: .02em; }
@@ -656,7 +638,6 @@ input.time24::placeholder { color: var(--text-3); letter-spacing: .04em; }
 .stat-block { display: flex; flex-direction: column; min-width: 0; }
 .stat-head { display: flex; align-items: baseline; gap: 8px; margin-bottom: 4px; }
 .stat-label { font-size: 11px; font-weight: 650; text-transform: uppercase; letter-spacing: .08em; color: var(--text-3-strong); }
-.stat-tag { font-size: 10.5px; font-weight: 600; color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent); border-radius: 5px; padding: 1px 6px; letter-spacing: .02em; }
 .stat-value { display: flex; align-items: baseline; gap: 8px; font-size: 30px; font-weight: 660; letter-spacing: -.025em; line-height: 1.05; font-variant-numeric: tabular-nums; }
 .stat-value .unit { font-size: 15px; font-weight: 500; color: var(--text-2); margin-left: 2px; letter-spacing: 0; }
 .stat-value .v { white-space: nowrap; }

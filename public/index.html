@@ -22,13 +22,12 @@
   <div class="top-in">
     <div class="brand">
       <h1><span class="name-long">Office Attendance</span><span class="name-short">Attendance</span></h1>
-      <span class="sub" id="fyrange"></span>
     </div>
     <label class="sr" for="fysel">Financial year</label>
     <select class="ghost" id="fysel"></select>
     <button class="ghost desk-only" id="settingsBtn">Settings</button>
     <button class="ghost icon-sm desk-only" id="themeBtn" aria-label="Theme"></button>
-    <span class="version" id="version" title="Build currently being served"></span>
+    <span class="version" id="version" hidden></span>
     <button class="ghost icon phone-only" id="menuBtn" aria-label="Menu" aria-haspopup="dialog">
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></svg>
     </button>
@@ -37,7 +36,7 @@
 
 <div class="wrap">
   <div class="nudge" id="backupNudge" role="status" hidden>
-    <span id="nudgeText">Your attendance is only on this phone. Save a backup so a lost or reset phone doesn't lose it.</span>
+    <span id="nudgeText">Not backed up</span>
     <span class="nudge-acts"><button class="primary" id="nudgeBackup">Back up now</button><button class="ghost" id="nudgeLater">Later</button></span>
   </div>
   <section class="card tab-today" id="logCard">
@@ -56,12 +55,10 @@
           <button class="ghost" id="todayBtn">Today</button>
         </div>
         <button type="button" class="dayline" id="dayline" aria-label="Choose a date"></button>
-        <p class="keyhint" aria-hidden="true"><kbd>←</kbd> <kbd>→</kbd> a day &middot; <kbd>↑</kbd> <kbd>↓</kbd> a week &middot; <kbd>Shift</kbd> selects, and <kbd>↑</kbd> <kbd>↓</kbd> run to the week's end &middot; <kbd class="mod">Ctrl</kbd>-click picks days</p>
         <div class="rangenote" id="rangenote" hidden></div>
       </div>
 
       <div class="logcol what">
-        <p class="locknote" id="lockNote" hidden>Weekend: not a work day, so it can't be changed.</p>
         <div id="chipzone"></div>
         <div class="field comment-field">
           <label for="comment">Comment</label>
@@ -98,21 +95,16 @@
       <button class="ghost icon" id="mNext" aria-label="Next month">&rsaquo;</button>
       <button class="ghost msel" id="mSelect" aria-pressed="false">Select</button>
     </div>
-    <p class="mhint" id="mHint" hidden>Tap the first day, then the last</p>
     <div class="mbody">
       <div class="mdows" aria-hidden="true"><span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span><span>Sun</span></div>
       <div class="mgrid" id="mGrid"></div>
-      <div class="mlegend">
-        <span><i class="k-dot"></i>times logged</span>
-        <span><i class="k-plan"></i>planned (faded)</span>
-      </div>
     </div>
     <div class="mstats" id="mStats"></div>
   </section>
 
   <section class="card tab-year" id="tilesCard">
     <div class="card-head">
-      <h2 id="tilesTitle">Year to date</h2>
+      <h2 id="tilesTitle" class="sr"></h2>
       <div class="spacer"></div>
       <div class="seg" role="group" aria-label="Period">
         <button id="periodYtd" aria-pressed="false"><span class="lbl-long">Year to date</span><span class="lbl-short">YTD</span></button>
@@ -128,8 +120,7 @@
 
   <section class="card tab-year" id="gridCard">
     <div class="card-head">
-      <h2>FY<span id="fyLabel"></span> <span class="desk-only">grid</span><span class="phone-only">by month</span></h2>
-      <span class="note desk-only" id="gridHint">Click a day to edit<span class="shift-hint"> &middot; Shift-click for a range &middot; <span class="mod">Ctrl</span>-click to pick days</span></span>
+      <h2>FY<span id="fyLabel"></span></h2>
       <div class="spacer desk-only"></div>
       <button class="ghost desk-only" id="hourColsBtn" aria-pressed="false">All hour columns</button>
     </div>
@@ -145,12 +136,11 @@
   <div class="rs-grip" aria-hidden="true"></div>
   <div class="rs-head">
     <h3 id="rsTitle"></h3>
-    <p id="rsNote"></p>
   </div>
   <div class="rs-chips" id="rsChips"></div>
   <div class="rs-actions">
     <button class="ghost" id="rsCancel">Cancel</button>
-    <button class="ghost danger" id="rsClear">Clear these days</button>
+    <button class="ghost danger" id="rsClear">Clear</button>
   </div>
 </section>
 
@@ -167,6 +157,7 @@
   <div class="menu-body">
     <button class="menu-item" id="menuSettings">Settings</button>
     <button class="menu-item" id="menuTheme">Theme</button>
+    <button class="menu-item update" id="menuUpdate" hidden></button>
     <p class="menu-version" id="menuVersion"></p>
   </div>
 </dialog>
@@ -177,12 +168,12 @@
     <section class="set-sec" aria-labelledby="secWork">
       <div class="set-head">
         <h3 id="secWork">Working pattern</h3>
-        <span class="set-saved" id="settingsSaved" role="status" aria-live="polite">Saved as you change it</span>
+        <span class="set-saved" id="settingsSaved" role="status" aria-live="polite"></span>
       </div>
       <div class="set-rows">
         <div class="set-row">
           <label for="setStd">Standard day</label>
-          <span class="set-in"><input type="text" class="dur" id="setStd" inputmode="decimal" autocomplete="off" spellcheck="false" maxlength="9" size="6" placeholder="h:mm" aria-describedby="setStdHint"><span class="unit" id="setStdHint">h:mm</span></span>
+          <span class="set-in"><input type="text" class="dur" id="setStd" inputmode="decimal" autocomplete="off" spellcheck="false" maxlength="9" size="6" placeholder="h:mm"></span>
         </div>
         <div class="set-row">
           <label for="setReq">Office requirement</label>
@@ -191,7 +182,7 @@
         <div class="set-row">
           <label for="setNw">Non-working day</label>
           <select id="setNw">
-            <option value="-1">None (5-day week)</option>
+            <option value="-1">None</option>
             <option value="1">Monday</option><option value="2">Tuesday</option><option value="3">Wednesday</option>
             <option value="4">Thursday</option><option value="5">Friday</option>
           </select>
@@ -224,9 +215,9 @@
     <section class="set-sec" aria-labelledby="secYears">
       <h3 id="secYears">Years and calendar</h3>
       <div class="set-list">
-        <button class="set-item" id="addFy"><span class="set-item-t"><span id="addFyLabel">Add next year</span><small id="addFyNote"></small></span></button>
-        <button class="set-item" id="fillSkeleton"><span class="set-item-t"><span>Refill weekends and holidays</span><small>Fills blank days in this year with weekends, public holidays and non-working days</small></span></button>
-        <button class="set-item danger" id="clearFuture"><span class="set-item-t"><span>Clear future days</span><small id="clearFutureNote">Tomorrow to the end of the year · asks first</small></span></button>
+        <button class="set-item" id="addFy"><span class="set-item-t"><span id="addFyLabel">Add next year</span></span></button>
+        <button class="set-item" id="fillSkeleton"><span class="set-item-t"><span>Refill weekends and holidays</span></span></button>
+        <button class="set-item danger" id="clearFuture"><span class="set-item-t"><span>Clear future days</span></span></button>
       </div>
     </section>
 
@@ -243,11 +234,9 @@
         <button class="ghost" id="importBtn">Restore&hellip;</button>
         <input type="file" id="importFile" accept="application/json" hidden>
       </div>
-      <p class="set-note" id="storageNote" hidden></p>
     </section>
 
     <p class="dlg-err" id="settingsErr" role="alert"></p>
-    <p class="note">Work days for the requirement = Office + Home; working sick is counted in the key totals under the grid, not in the percentage. Office hours count only on Office days. <span id="dataWhere">Data lives in <code>/data/attendance.db</code> on the container's volume.</span></p>
     <div class="set-version">
       <p class="note" id="settingsVersion"></p>
       <button class="ghost" id="checkUpdate" hidden>Check for updates</button>
@@ -258,23 +247,22 @@
 <dialog id="welcomeDlg" aria-labelledby="welcomeTitle">
   <div class="card-head"><h2 id="welcomeTitle">Office Attendance</h2></div>
   <div class="dlg-body">
-    <p class="welcome-lead">Track your office days and hours across the October to September year. Your data lives on this phone, with no account. Cloud backup keeps an encrypted copy that only your recovery code can open.</p>
     <div class="set-rows">
       <div class="set-row">
         <label for="wState">Public holidays</label>
         <select id="wState"></select>
       </div>
       <div class="set-row">
-        <label for="wNw">Day off each week</label>
+        <label for="wNw">Day off</label>
         <select id="wNw">
-          <option value="-1">None (5-day week)</option>
+          <option value="-1">None</option>
           <option value="1">Monday</option><option value="2">Tuesday</option><option value="3">Wednesday</option>
           <option value="4">Thursday</option><option value="5">Friday</option>
         </select>
       </div>
       <div class="set-row">
         <label for="wStd">Standard day</label>
-        <span class="set-in"><input type="text" class="dur" id="wStd" inputmode="decimal" autocomplete="off" spellcheck="false" maxlength="9" size="6" placeholder="h:mm" aria-describedby="wStdHint"><span class="unit" id="wStdHint">h:mm</span></span>
+        <span class="set-in"><input type="text" class="dur" id="wStd" inputmode="decimal" autocomplete="off" spellcheck="false" maxlength="9" size="6" placeholder="h:mm"></span>
       </div>
       <div class="set-row">
         <label for="wReq">Office target</label>
@@ -291,22 +279,20 @@
     </div>
     <label class="set-check" for="wCloud">
       <input type="checkbox" id="wCloud" checked>
-      <span><b>Back up to the cloud automatically</b><small>Encrypted on this phone before it's sent. You'll get a recovery code to restore it on any phone.</small></span>
+      <span>Cloud backup</span>
     </label>
-    <p class="note">You can change any of these later in Settings.</p>
     <p class="dlg-err" id="welcomeErr" role="alert"></p>
     <div class="actions">
       <button class="primary" id="welcomeStart">Start</button>
-      <button class="ghost" id="welcomeRestore">Restore a backup&hellip;</button>
+      <button class="ghost" id="welcomeRestore">Restore&hellip;</button>
+      <button class="ghost" id="installApp" hidden>Install app</button>
     </div>
-    <p class="note install-tip" id="installTip">Add it to your home screen so it opens like an app and keeps your data safe: on iPhone, Share &rsaquo; <b>Add to Home Screen</b>; on Android, the menu &rsaquo; <b>Install app</b>.</p>
   </div>
 </dialog>
 
 <dialog id="codeDlg" aria-labelledby="codeTitle">
   <div class="card-head"><h2 id="codeTitle">Your recovery code</h2></div>
   <div class="dlg-body">
-    <p id="codeLead">Save this somewhere safe: a password manager, Notes, or an email to yourself. It's the only way to restore your backup on another phone. Your data is encrypted with it, so nobody else can recover it for you.</p>
     <p class="code-big" id="codeText"></p>
     <div class="actions">
       <button class="ghost" id="codeCopy">Copy</button>
@@ -314,7 +300,6 @@
       <button class="primary" id="codeDone">I've saved it</button>
     </div>
     <div class="passkey-offer" id="codePasskeyBox" hidden>
-      <p>Save a passkey as well, and your next phone restores with Face ID or a fingerprint. Keep the code too: it's the way back if you switch between iPhone and Android.</p>
       <button class="ghost" id="codePasskey">Save a passkey&hellip;</button>
       <p class="dlg-err" id="codePasskeyMsg" role="status"></p>
     </div>
@@ -326,16 +311,16 @@
   <div class="dlg-body">
     <div class="passkey-use" id="restorePasskeyBox" hidden>
       <button class="primary" id="restorePasskey">Use a passkey</button>
-      <p class="or"><span>or type your recovery code</span></p>
+      <p class="or"><span>or</span></p>
     </div>
-    <label class="field-label" for="restoreCode">Recovery code</label>
+    <label class="sr" for="restoreCode">Recovery code</label>
     <input type="text" id="restoreCode" class="code-input" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="XXXX-XXXX-XXXX-XXXX" maxlength="24">
     <p class="dlg-err" id="restoreErr" role="alert"></p>
     <div class="actions">
       <button class="primary" id="restoreGo">Restore</button>
       <button class="ghost" id="restoreCancel">Cancel</button>
     </div>
-    <button class="linkish" id="restoreFile">Use a backup file instead</button>
+    <button class="linkish" id="restoreFile">Use a backup file</button>
   </div>
 </dialog>
 

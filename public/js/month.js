@@ -9,7 +9,7 @@
  * Shift-click on the desktop grid.
  */
 import { S, loadState } from './state.js';
-import { $, esc, fmtDur, plural, codeVars } from './format.js';
+import { $, esc, plural, codeVars } from './format.js';
 import { daysStat, hoursStat } from './stat.js';
 import { describe } from './grid.js';
 import { attempt } from './dialogs.js';
@@ -35,7 +35,6 @@ function setSelecting(on) {
   sel.fy = S.fy;
   $('mSelect').setAttribute('aria-pressed', String(on));
   $('mSelect').textContent = on ? 'Done' : 'Select';
-  $('mHint').hidden = !on;
   renderMonth();
 }
 
@@ -52,13 +51,12 @@ function renderSheet() {
   $('rangeSheet').hidden = !dates.length;
   document.body.classList.toggle('sheet-open', !!dates.length);
   if (!dates.length) return;
+  // Days the calendar owns (weekends, holidays, day off) are hatched in the
+  // grid and left alone; the title counts only the days a code will change.
   const kept = dates.filter((d) => CALENDAR.has(S.days[d]?.code));
   const work = dates.length - kept.length;
-  $('rsTitle').textContent = dates.length === 1 ? `${shortDay(dates[0])}: apply a code`
-    : `${shortDay(dates[0])} – ${shortDay(dates[dates.length - 1])}: apply to ${work} work ${plural(work, 'day')}`;
-  $('rsNote').textContent = kept.length
-    ? `${kept.length} weekend, holiday or non-working ${plural(kept.length, 'day')} in the range ${kept.length === 1 ? 'stays' : 'stay'} as ${kept.length === 1 ? 'it is' : 'they are'}.`
-    : sel.end ? 'Tap another day to start a new range.' : 'Tap the last day of the range, or pick a code for just this day.';
+  $('rsTitle').textContent = dates.length === 1 ? shortDay(dates[0])
+    : `${shortDay(dates[0])} – ${shortDay(dates[dates.length - 1])} · ${work} ${plural(work, 'day')}`;
   $('rsChips').innerHTML = S.codes.map((c) =>
     `<button class="sheet-chip code" data-code="${c.code}" style="${codeVars(c)}">${c.label}</button>`).join('');
   $('rsChips').querySelectorAll('button[data-code]').forEach((b) => { b.onclick = () => apply(b.dataset.code); });
@@ -145,9 +143,7 @@ export function renderMonth() {
   // hours done plus the times entered on days still to come, with where it
   // stands today in the note. A month already over is just what happened.
   const req = S.settings.officeReqPct, std = S.settings.stdDayHours;
-  const avg = m.pastAvgHrsPerOfficeDay;
-  $('mStats').innerHTML = daysStat(m, req, { label: 'Days' }) + hoursStat(m, req, std, { plans: true, label: 'Hours' })
-    + `<p class="mfoot">${avg == null ? '' : `Avg office day ${fmtDur(avg)} · std ${fmtDur(std)}`}</p>`;
+  $('mStats').innerHTML = daysStat(m, req, { label: 'Days' }) + hoursStat(m, req, std, { plans: true, label: 'Hours' });
   renderSheet();
 }
 

@@ -37,7 +37,6 @@ export function setupCloud({ store, transport }) {
   function showCode(code, { first = false } = {}) {
     const dlg = $('codeDlg');
     $('codeText').textContent = code;
-    $('codeLead').hidden = !first;
     $('codeShare').hidden = !navigator.share;
     $('codeCopy').onclick = async () => {
       try { await navigator.clipboard.writeText(code); flash('Recovery code copied'); }
@@ -55,7 +54,7 @@ export function setupCloud({ store, transport }) {
         await passkeys.add();
         $('codePasskey').hidden = true;
         $('codePasskeyMsg').className = 'dlg-err ok';
-        $('codePasskeyMsg').textContent = 'Passkey saved. Restore with it on your next phone.';
+        $('codePasskeyMsg').textContent = 'Passkey saved';
       } catch (e) {
         $('codePasskeyMsg').textContent = e.message;
       } finally {
@@ -142,20 +141,20 @@ export function setupCloud({ store, transport }) {
     const acts = [];
     if (!st.on) {
       line.className = 'cloud-status off';
-      line.innerHTML = '<b>Cloud backup is off.</b> Your data is only on this phone.';
-      acts.push(['cloudOn', 'primary', 'Turn on cloud backup']);
+      line.textContent = 'Cloud backup off';
+      acts.push(['cloudOn', 'primary', 'Turn on']);
       acts.push(['cloudRestore', 'ghost', 'Restore…']);
     } else if (st.conflict) {
       line.className = 'cloud-status bad';
-      line.innerHTML = `<b>Another device backed up to your code</b>${st.conflict.updated ? ` ${ago(st.conflict.updated)}` : ''}. Choose which copy to keep.`;
-      acts.push(['cloudUseCloud', 'primary', 'Use the cloud copy']);
+      line.textContent = `Another device backed up${st.conflict.updated ? ` ${ago(st.conflict.updated)}` : ''}`;
+      acts.push(['cloudUseCloud', 'primary', 'Use cloud copy']);
       acts.push(['cloudKeepMine', 'ghost', "Keep this phone's"]);
     } else {
       const when = st.pending
-        ? (st.error === 'offline' ? 'Waiting for a connection to back up' : st.error ? `Couldn't back up: ${esc(st.error)}. It will try again.` : 'Backing up…')
+        ? (st.error === 'offline' ? 'Waiting for a connection' : st.error ? `Couldn't back up: ${st.error}` : 'Backing up…')
         : st.last ? `Backed up ${ago(st.last)}` : 'Backed up';
       line.className = `cloud-status ${st.pending && st.error ? 'warn' : 'ok'}`;
-      line.innerHTML = `<b>Cloud backup is on.</b> ${when}`;
+      line.textContent = when;
       acts.push(['cloudShowCode', 'ghost', 'Show code']);
       if (canPasskey) acts.push(['cloudPasskeyAdd', 'ghost', 'Add passkey']);
       acts.push(['cloudRestore', 'ghost', 'Restore…']);
@@ -164,7 +163,7 @@ export function setupCloud({ store, transport }) {
     $('cloudActions').innerHTML = acts.map(([id, cls, label]) => `<button class="${cls}" id="${id}">${label}</button>`).join('');
     const keys = st.on && !st.conflict ? passkeys.list() : [];
     $('cloudPasskeys').hidden = !keys.length;
-    $('cloudPasskeys').innerHTML = keys.map((p) => `<li><span><b>Passkey</b> added ${esc(day(p.added))}</span><button class="ghost" data-passkey="${esc(p.id)}">Remove</button></li>`).join('');
+    $('cloudPasskeys').innerHTML = keys.map((p) => `<li><span><b>Passkey</b> ${esc(day(p.added))}</span><button class="ghost" data-passkey="${esc(p.id)}">Remove</button></li>`).join('');
     for (const b of $('cloudPasskeys').querySelectorAll('button[data-passkey]')) {
       b.onclick = async () => {
         if (!(await askConfirm({
@@ -197,7 +196,7 @@ export function setupCloud({ store, transport }) {
       }))) return;
       await passkeys.removeAll();
       await cloud.turnOff();
-      flash('Cloud backup is off');
+      flash('Cloud backup off');
     });
     on('cloudUseCloud', async () => {
       try {

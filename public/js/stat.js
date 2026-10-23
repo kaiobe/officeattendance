@@ -3,14 +3,15 @@
  * card and Month tab - and the signed numbers used in the tables. One layout,
  * so the same figure reads the same way everywhere:
  *
- *   LABEL              tag
+ *   LABEL
  *   big number         (+ chip)
  *   one line of figures
- *   a note, only when something needs flagging
+ *   a note, only when something needs acting on
  *   bar with the target marked
  *
- * Ahead and short are a sign and a colour: +3.25 in green, −11.63 in red.
- * The longer explanation is on hover (title), not on the card.
+ * Ahead and short are a sign and a colour: +3h15m in green, −11h38m in red.
+ * No helper text on the card: the working is on hover (title), which is also
+ * what assistive tech and agents read.
  */
 import { esc, fmtDur, durHtml, minutes, fmtNum, pct, plural } from './format.js';
 
@@ -41,17 +42,19 @@ export function bar(value, target, cls) {
 /** Office days: the percentage, with the days ahead or short beside it. */
 export function daysStat(s, req, { label = 'Office days' } = {}) {
   if (!s.workDays) {
-    return block({ label, value: '—', sub: 'No work days yet', meter: bar(0, req, 'idle') });
+    return block({ label, value: '—', meter: bar(0, req, 'idle') });
   }
   const surplus = -s.gapDays;
   const sg = signed(surplus);
+  // The why (target, working sick) is on hover; the card shows the figures.
+  const why = `${fmtNum(s.officeDays)} office of ${fmtNum(s.workDays)} work days (Office + Home); target ${fmtNum(s.requiredOfficeDays)}`
+    + (s.workingSickDays ? `. ${s.workingSickDays} working sick not counted` : '')
+    + (s.futureWorkDays ? '. Includes days planned ahead' : '');
   return block({
-    label,
-    tag: s.futureWorkDays ? 'incl. planned' : '',
+    label, title: why,
     value: `<span${belowTarget(s.pctDays, req) ? ' class="pct-low"' : ''}>${pct(s.pctDays)}<span class="unit">%</span></span>`,
     chip: `<span class="chip-delta ${sg.cls}" title="Office days ahead (+) or short (−) of ${Math.round(req * 100)}%">${sg.text} d</span>`,
-    sub: `${fmtNum(s.officeDays)} of ${fmtNum(s.workDays)} days · target ${fmtNum(s.requiredOfficeDays)}`,
-    note: s.workingSickDays ? `${s.workingSickDays} working sick not counted` : '',
+    sub: `${fmtNum(s.officeDays)} of ${fmtNum(s.workDays)} days`,
     meter: bar(s.pctDays, req, sg.cls === 'neg' ? 'critical' : 'good'),
   });
 }
@@ -64,23 +67,21 @@ export function daysStat(s, req, { label = 'Office days' } = {}) {
 export function hoursStat(s, req, std, { plans = false, label = 'Office hours' } = {}) {
   const work = plans ? s.workDays : s.pastWorkDays;
   const hasPlans = plans && s.plannedWorkDays > 0;
-  const tag = hasPlans ? 'incl. planned' : '';
-  const why = `Office hours ahead (+) or short (−) of ${Math.round(req * 100)}% × (Office + Home days) × a ${fmtDur(std)} standard day`
-    + (hasPlans ? ', counting the hours planned on days still to come' : ' to date');
-  if (!work) return block({ label, tag, value: '—', sub: 'No work days yet', meter: bar(0, req, 'idle'), title: why });
+  // The working is on hover; the card shows the figures and anything to act on.
+  const why = `Office hours ahead (+) or short (−) of ${Math.round(req * 100)}% × ${work} work ${plural(work, 'day')} × ${fmtDur(std)}`
+    + (hasPlans ? `, including ${fmtDur(s.plannedOfficeHrs)} planned` : ' to date')
+    + (hasPlans && s.plannedUntimedOfficeDays ? `; ${s.plannedUntimedOfficeDays} planned ${plural(s.plannedUntimedOfficeDays, 'day')} without times counted as ${fmtDur(std)}` : '');
+  if (!work) return block({ label, value: '—', meter: bar(0, req, 'idle'), title: why });
   const office = plans ? s.projOfficeHrs : s.pastOfficeHrs;
   const need = plans ? s.projReqHrs : s.pastReqHrs;
   // From the rounded minutes, so "60h25m of 48h8m" and +12h17m add up.
   const surplus = (minutes(office) - minutes(need)) / 60;
   const sg = signed(surplus, fmtDur);
   const notes = [];
-  notes.push(`${Math.round(req * 100)}% × ${work} work ${plural(work, 'day')} × ${fmtDur(std)}`);
-  if (hasPlans) notes.push(`${fmtDur(s.plannedOfficeHrs)} planned`);
   if (hasPlans && s.pastWorkDays) notes.push(`so far ${signedHtml((minutes(s.pastOfficeHrs) - minutes(s.pastReqHrs)) / 60, fmtDur)}`);
-  if (hasPlans && s.plannedUntimedOfficeDays) notes.push(`<span title="Planned office days with no times count as a standard ${fmtDur(std)} day">${s.plannedUntimedOfficeDays} est.</span>`);
   if (s.untimedPastOfficeDays) notes.push(`<span class="warn">${s.untimedPastOfficeDays} ${plural(s.untimedPastOfficeDays, 'day')} missing times</span>`);
   return block({
-    label, tag, title: why,
+    label, title: why,
     value: signedDurHtml(surplus),
     sub: `${fmtDur(office)} of ${fmtDur(need)}`,
     noteHtml: notes.join(' · '),
@@ -98,19 +99,19 @@ function signedDurHtml(n) {
 /** Average day length: background information, so no bar and no colour. */
 export function dayLengthStat(s, std, { label = 'Average day length' } = {}) {
   const avg = s.pastAvgHrsPerOfficeDay;
-  if (avg == null) return block({ label, value: '—', sub: `No office times yet · std ${fmtDur(std)}` });
+  if (avg == null) return block({ label, value: '—', title: `Standard day ${fmtDur(std)}` });
   const d = signed((minutes(avg) - minutes(std)) / 60, fmtDur);
   return block({
     label,
     value: durHtml(avg),
-    chip: `<span class="chip-delta zero" title="Against the standard ${fmtDur(std)} day">${d.text}</span>`,
-    sub: `${s.pastTimedOfficeDays} completed ${plural(s.pastTimedOfficeDays, 'day')} · std ${fmtDur(std)}`,
+    title: `Average of ${s.pastTimedOfficeDays} completed office ${plural(s.pastTimedOfficeDays, 'day')}, against a ${fmtDur(std)} standard day`,
+    chip: `<span class="chip-delta zero">${d.text}</span>`,
   });
 }
 
-function block({ label, tag = '', value, chip = '', sub = '', note = '', noteHtml = '', meter = '', title = '' }) {
+function block({ label, value, chip = '', sub = '', note = '', noteHtml = '', meter = '', title = '' }) {
   return `<div class="stat-block"${title ? ` title="${esc(title)}"` : ''}>
-    <div class="stat-head"><span class="stat-label">${label}</span>${tag ? `<span class="stat-tag">${tag}</span>` : ''}</div>
+    <div class="stat-head"><span class="stat-label">${label}</span></div>
     <div class="stat-value"><span class="v">${value}</span>${chip}</div>
     ${sub ? `<div class="stat-sub">${sub}</div>` : ''}
     ${note || noteHtml ? `<div class="stat-note">${noteHtml || esc(note)}</div>` : ''}

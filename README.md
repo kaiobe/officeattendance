@@ -119,7 +119,7 @@ choose a new empty output folder (`node scripts/build-standalone.mjs dist-new`).
   phone's time zone), day off each week, standard day, office target and usual hours.
   A new phone starts on a 5-day week of 8.75-hour days, 09:00 to 17:45
   (`public/local/defaults.js`). Cloud backup is ticked; starting shows their
-  recovery code once. **Restore a backup…** on that screen moves someone to a new
+  recovery code once. **Restore…** on that screen moves someone to a new
   phone, from their recovery code or a backup file.
 - **After that:** it's the same app you use, with the tabs, punch button, month view and
   year grid. Backup files and CSV exports go to the phone's share sheet (Files, Drive,
@@ -139,9 +139,10 @@ choose a new empty output folder (`node scripts/build-standalone.mjs dist-new`).
 Browser storage can be cleared. iPhones in particular may clear a website's data if
 it goes unused for a few weeks, unless it's been added to the home screen. So the app:
 
-- asks the browser to keep its storage permanently, and Settings › Backup says whether
-  it agreed;
-- shows home-screen instructions on the setup screen when it's open in a browser tab;
+- asks the browser to keep its storage permanently;
+- offers **Install app** on the setup screen where the browser can install it (Chrome on
+  Android and desktop). On an iPhone it's Safari's Share › Add to Home Screen, covered in
+  the colleague guide;
 - with cloud backup off or failing, shows a reminder at the top of the page a week
   after starting with no backup, and a month after the last backup. **Later** puts it
   off for a week.
@@ -185,7 +186,7 @@ On by default, and nothing to sign up for:
 
 A passkey can stand in for typing the recovery code. It's saved from the recovery code
 screen at setup or **Settings › Backup › Add passkey**. A new phone then restores with
-**Restore a backup… › Use a passkey**, using Face ID or a fingerprint.
+**Restore… › Use a passkey**, using Face ID or a fingerprint.
 
 - **How.** The passkey gives the site a secret only it can produce (the WebAuthn PRF
   extension), the same on every device it syncs to. From it the phone derives a lookup id
@@ -240,8 +241,7 @@ checks the revision, never sees a key).
 
 ## Using it
 
-**Log a day** — pick a date (arrow keys ← → also move a day, ↑ ↓ a week; the hint under
-the date says so), tap a code. It saves immediately. On an office day, *Standard day* fills your usual 07:30–17:00.
+**Log a day** — pick a date (arrow keys ← → also move a day, ↑ ↓ a week), tap a code. It saves immediately. On an office day, *Standard day* fills your usual 07:30–17:00.
 
 Times are always 24-hour, whatever the computer's language settings: the boxes are
 plain text that read `HH:MM`. Type a time any natural way (`930`, `9:30`, `1745`,
@@ -251,7 +251,7 @@ isn't a time puts the box back and says so.
 **Punching in and out** is one button that does the next thing: it reads *In now* with
 the current time until there's an In time, then *Out now*. Punching codes the day Office.
 A line under the button confirms what was saved, with *Undo* to put the day back exactly
-as it was. While you're in, the hours beside the times count up ("3 h 18 m so far").
+as it was. While you're in, the hours beside the times count up, with a live dot.
 
 Entering a time on a blank day, a holiday or your non-working day also saves it as an office
 day. **Weekends can't be changed at all**: a Saturday or Sunday opens read-only, the server
@@ -284,13 +284,13 @@ average office day is still there, but as background.
 
 **Planning ahead.** Codes and times entered on days still to come are your plan. The month
 views (the phone's Month tab, the desktop tiles' **Month** and **Full year**) and the grid
-count them: hours ahead or short if the plan holds. The cards are tagged *incl. planned*,
-with the planned hours and where you stand today in the note. A planned office day with
-no times counts as a standard day. The Today card, **Month to date** and **Year to date**
+count them: hours ahead or short if the plan holds, with *so far* (where you stand today)
+in the note. A planned office day with no times counts as a standard day; the planned
+hours and estimates are in the card's hover text. The Today card, **Month to date** and **Year to date**
 stay on days to date.
 
 Ahead and short are a sign and a colour everywhere: **+3h15m** in green is ahead,
-**−11h38m** in red is short. An office percentage below the target is red too. Hover a card for what the number means.
+**−11h38m** in red is short. An office percentage below the target is red too. Hover a card for the working behind it.
 
 **Hours are shown as time, never decimals.** Where there's room (the cards, their notes,
 the log card) they read as words: *8h45m*, *45m*. In tight columns (the grid and the
@@ -326,7 +326,7 @@ The page splits into three tabs along the bottom:
   weekends show W. Under the
   calendar: office days and office hours against the target for that month.
   **Select** picks a range by touch: tap the first day, then the last, then a code in the
-  sheet that slides up. As with Shift-click, only work days change. Weekends, holidays and
+  sheet that slides up (its title gives the dates and how many work days change). As with Shift-click, only work days change. Weekends, holidays and
   your non-working day are hatched and left alone.
 - **Year** — the tiles and one row per month in place of the 31-column grid: **Days %**
   (office days as a % of work days), **Days +/-** (ahead or short of the target), then
@@ -336,8 +336,20 @@ The page splits into three tabs along the bottom:
 The date heading is the date picker: tap it to choose a day. *Today* only appears when
 you're on another day.
 
-The header is one line: the year picker and a menu with Settings, the theme and the
-version. The version badge only appears in the header when the page is stale.
+The header is one line: the name, the year picker, and (on a phone) a menu with Settings,
+the theme and the version. The version badge only appears when the page is out of date;
+the phone's menu then offers **Update to v…**. A Saturday or Sunday on its own shows just
+its W: no codes, times or comment, since none can be changed.
+
+### Interface copy
+
+Screens carry figures, controls and names, not explanations. No taglines, helper text or
+secondary labels: if a screen only makes sense with one, change the layout instead (a
+weekend shows only its W rather than a sentence saying it's locked; an update is a button,
+not a note about a badge). Workings and definitions go in `title` (hover text), which
+screen readers and agents read too, and in this README. Groups that lose their visible
+label keep it as `aria-label`; headings that would repeat a control stay as `.sr` text.
+Feedback (*Saved*, errors, confirmations before something destructive) stays, kept short.
 
 ### Settings and theme
 
@@ -606,11 +618,13 @@ Month to date is empty for a financial year that has not started. An Office day
 in progress joins the to-date hours denominator when both times are recorded;
 the full-month projection already includes it.
 
-**The key totals** — shown under the grid, counted the way the workbook's key panel counts them:
+**The key totals** — shown under the grid, counted the way the workbook's key panel counts
+them (the formulas are on hover):
 
 ```
-TOTAL DAYS WORKED = O + H + WS
-TOTAL WORK DAYS   = everything except public holidays, non-working days and weekends
+Days worked        = O + H + WS
+Work days          = everything except public holidays, non-working days and weekends
+Counted for target = O + H
 ```
 
 So a working-sick day is a day you worked and shows in the key totals, but it doesn't

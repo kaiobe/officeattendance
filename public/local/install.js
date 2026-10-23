@@ -127,20 +127,42 @@ export function installLocal() {
   };
 
   runtime.afterLoad = () => {
-    attempt(() => keepData(saveMeta, cloudUi.cloud));
+    attempt(() => keepData(saveMeta));
     attempt(() => cloudUi.start());
     attempt(() => nudge(store, saveMeta, cloudUi.cloud));
     registerServiceWorker();
     updater.watch();
     const from = updater.updatedFrom();
     if (from && from !== runtime.appVersion) flash(`Updated to v${runtime.appVersion}`);
-    if (movedDefaults) flash(`Standard day is now ${NEW_PHONE.stdDayHours} h, ${NEW_PHONE.defaultIn} to ${NEW_PHONE.defaultOut}. Change it in Settings if that's not right.`);
+    if (movedDefaults) flash(`Standard day now ${fmtClock(NEW_PHONE.stdDayHours)}, ${NEW_PHONE.defaultIn}–${NEW_PHONE.defaultOut}`);
   };
 
   // Beside cloud backup, the file buttons say they're files, so "Restore…" means the code.
   $('backupLink').textContent = 'Save file';
   $('importBtn').textContent = 'Open file…';
-  $('dataWhere').textContent = 'Your data is kept in this browser on this device, and encrypted in the cloud if cloud backup is on.';
+  offerInstall();
+}
+
+/**
+ * Where the browser can install the app (Chrome on Android and desktop), an
+ * Install app button on the setup screen does it in one tap. iPhone has no
+ * such prompt, and Safari's Share › Add to Home Screen is in the guide.
+ */
+function offerInstall() {
+  let prompt = null;
+  window.addEventListener('beforeinstallprompt', (e) => {
+    e.preventDefault();
+    prompt = e;
+    $('installApp').hidden = false;
+  });
+  window.addEventListener('appinstalled', () => { $('installApp').hidden = true; });
+  $('installApp').onclick = async () => {
+    if (!prompt) return;
+    prompt.prompt();
+    await prompt.userChoice.catch(() => null);
+    prompt = null;
+    $('installApp').hidden = true;
+  };
 }
 
 /* ---------- saving exports ---------- */
@@ -184,7 +206,6 @@ function welcome(store, saveMeta, cloudUi) {
   $('wReq').value = Math.round(s.officeReqPct * 100);
   $('wIn').value = s.defaultIn;
   $('wOut').value = s.defaultOut;
-  $('installTip').hidden = matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
 
   return new Promise((resolve) => {
     const done = async () => {
@@ -266,23 +287,13 @@ async function moveOffFirstDefaults(store, saveMeta) {
  * Browsers may clear a site's storage when space runs low, and Safari clears
  * sites you haven't opened for a few weeks unless they're on the home screen.
  * Asking for persistent storage opts out where the browser allows it. The
- * outcome is shown in Settings, so it's never a surprise.
+ * outcome is kept in meta.persisted; cloud backup is the copy that survives.
  */
-async function keepData(saveMeta, cloud) {
+async function keepData(saveMeta) {
   let kept = false;
   try {
     kept = (await navigator.storage?.persisted?.()) || (await navigator.storage?.persist?.()) || false;
   } catch { /* not supported */ }
-  const onHome = matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
-  const el = $('storageNote');
-  el.hidden = false;
-  el.textContent = cloud.status().on
-    ? `${kept ? 'This device keeps your data permanently, and' : 'The browser could clear this phone\'s data, but'} cloud backup has a copy: restore it with your recovery code.`
-    : kept
-    ? 'This device keeps your data permanently. A backup is still your copy if the phone is lost or reset.'
-    : onHome
-      ? 'Your data is kept on this device. Back up now and then: it\'s your only copy if the phone is lost or reset.'
-      : 'The browser may clear your data if you don\'t use the app for a while. Add it to your home screen, and back up now and then.';
   await saveMeta({ persisted: kept });
 }
 
@@ -303,9 +314,7 @@ function nudge(store, saveMeta, cloud) {
   const el = $('backupNudge');
   el.hidden = !due || snoozed;
   if (el.hidden) return;
-  $('nudgeText').textContent = last
-    ? `Your last backup was ${Math.floor((now - last) / DAY)} days ago. Your attendance is only on this phone, so save a fresh copy.`
-    : "Your attendance is only on this phone. Save a backup so a lost or reset phone doesn't lose it.";
+  $('nudgeText').textContent = last ? `Last backup ${Math.floor((now - last) / DAY)} days ago` : 'Not backed up';
   $('nudgeBackup').onclick = () => attempt(() => runtime.saveFile('/api/export.json'));
   $('nudgeLater').onclick = () => attempt(async () => { await saveMeta({ nudgeSnoozeUntil: now + 7 * DAY }); el.hidden = true; });
 }

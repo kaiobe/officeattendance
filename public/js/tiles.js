@@ -1,8 +1,8 @@
 /** The banner: office days, office hours against the target, and day length, for the chosen period. */
 import { S } from './state.js';
-import { $, longDate } from './format.js';
+import { $ } from './format.js';
 import { daysStat, hoursStat, dayLengthStat } from './stat.js';
-import { pad, DAY_NAMES, MONTH_SHORT, parseIso, weekdayOf } from '../lib/dates.js';
+import { pad } from '../lib/dates.js';
 
 /** The month the Month view opens on: the current one, else the last with any data. */
 function defaultMonthIdx() {
@@ -38,10 +38,11 @@ export function renderTiles() {
 
   const m = S.period === 'month' ? S.summary.months[S.monthIdx] : null;
   const mtd = S.summary.mtd;
-  $('tilesTitle').innerHTML = S.period === 'ytd' ? `Year to date · to ${longDate(S.today)}`
+  // Read by screen readers only: the period buttons already show it.
+  $('tilesTitle').textContent = S.period === 'ytd' ? `FY${S.fy} to date`
     : S.period === 'month' ? `${m.name} ${m.year}`
-    : S.period === 'mtd' ? (mtd.partial ? `${mtd.name} ${mtd.year}<span class="through"> · to ${longDate(mtd.through)}</span>` : `${mtd.name} ${mtd.year}`)
-    : `Full FY${S.fy}`;
+    : S.period === 'mtd' ? `${mtd.name} ${mtd.year}${mtd.partial ? ' to date' : ''}`
+    : `FY${S.fy}`;
 
   const ytd = $('periodYtd');
   ytd.disabled = !S.todayInFy;
@@ -76,12 +77,7 @@ export function wireTiles() {
  */
 export function renderSoFar() {
   const m = S.summary.mtd;
-  let through = '';
-  if (m.partial) {
-    const [, mo, d] = parseIso(m.through);
-    through = `to ${DAY_NAMES[weekdayOf(m.through)].slice(0, 3)} ${d} ${MONTH_SHORT[mo - 1]}`;
-  }
   $('soFar').innerHTML = `
-    <div class="sf-head"><h2>${m.name} ${m.partial ? 'so far' : m.year}</h2><span>${through}</span></div>
+    <div class="sf-head"><h2>${m.name} ${m.partial ? 'so far' : m.year}</h2></div>
     <div class="stat-pair">${daysStat(m, S.settings.officeReqPct, { label: 'Days' })}${hoursStat(m, S.settings.officeReqPct, S.settings.stdDayHours, { label: 'Hours' })}</div>`;
 }

@@ -51,14 +51,12 @@ function fillForm() {
   for (const [id, f] of Object.entries(FIELDS)) $(id).value = f.show(S.settings);
   const next = S.lastFy + 1;
   $('addFyLabel').textContent = `Add FY${next}`;
-  $('addFyNote').textContent = `Lays out Oct ${2000 + next - 1} – Sep ${2000 + next}`;
   const { from, to } = futureEntries();
   const none = from > to;                       // a year already over has no future days
   $('clearFuture').disabled = none;
-  $('clearFutureNote').textContent = none ? `FY${S.fy} has no days after today`
-    : from === fyStart(S.fy) ? `All of FY${S.fy} · asks first`
-    : `${from === addDays(S.today, 1) ? 'Tomorrow' : shortDate(from)} to ${shortDate(to)} · asks first`;
-  $('settingsVersion').textContent = `Version ${S.version || ''} · deployed ${builtAt(S.build)}`;
+  $('clearFuture').title = none ? '' : `${from === addDays(S.today, 1) ? 'Tomorrow' : shortDate(from)} to ${shortDate(to)}`;
+  $('settingsVersion').textContent = `v${S.version || ''}`;
+  $('settingsVersion').title = `Deployed ${builtAt(S.build)}`;
   showTheme();
 }
 
@@ -73,7 +71,7 @@ function saved(text = 'Saved') {
   el.textContent = `✓ ${text}`;
   el.classList.add('ok');
   clearTimeout(savedTimer);
-  savedTimer = setTimeout(() => { el.textContent = 'Saved as you change it'; el.classList.remove('ok'); }, 2500);
+  savedTimer = setTimeout(() => { el.textContent = ''; el.classList.remove('ok'); }, 2500);
 }
 
 async function saveField(id) {
@@ -88,7 +86,8 @@ async function saveField(id) {
     saved();
     // A new non-working day or state moves the calendar's own days by itself.
     if (r.moved) {
-      $('calHint').textContent = `${r.moved} ${plural(r.moved, 'day')} moved from today on to match. Days before today, and anything you've logged, stay as they were.`;
+      $('calHint').textContent = `${r.moved} ${plural(r.moved, 'day')} moved`;
+      $('calHint').title = "From today on. Earlier days, and anything you've logged, stay as they were.";
       $('calHint').hidden = false;
     }
   } catch (e) {

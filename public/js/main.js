@@ -22,12 +22,13 @@ const isStale = () => !!(newest() && newest() !== APP_VERSION);
 /**
  * The release badge. The page carries the version it was built from; if the
  * server reports a different one, this page is a cached copy of an older
- * build - so the badge says so and reloads past the cache when clicked. On a
- * phone the badge only shows when stale; the version lives in the menu.
+ * build - so the badge says so and reloads past the cache when clicked. It only
+ * shows when stale; otherwise the version is in Settings (and the phone's menu).
  */
 function renderVersion() {
   const el = $('version');
   const stale = isStale();
+  el.hidden = !stale;
   el.classList.toggle('stale', stale);
   el.textContent = stale ? `v${APP_VERSION} → v${newest()}` : `v${APP_VERSION}`;
   el.title = stale
@@ -49,7 +50,6 @@ function hardReload() {
 
 function renderAll() {
   $('fyLabel').textContent = S.fy;
-  $('fyrange').textContent = `FY${S.fy} · Oct ${2000 + S.fy - 1} – Sep ${2000 + S.fy}`;
   $('fysel').innerHTML = S.fys.map((f) => `<option value="${f}" ${f === S.fy ? 'selected' : ''}>FY${f}</option>`).join('');
   $('csvLink').href = `/api/export.csv?fy=${S.fy}`;
   renderVersion();
@@ -167,11 +167,11 @@ function renderThemeButton() {
 
 function renderMenu() {
   $('menuTheme').textContent = `Theme: ${THEME_LABEL[getTheme()]}`;
-  $('menuVersion').textContent = isStale()
-    ? (runtime.local
-      ? `This page is v${APP_VERSION}; v${newest()} is out. Tap the badge to update.`
-      : `This page is v${APP_VERSION}; the server has v${newest()}. Tap the badge to reload.`)
-    : `Version ${APP_VERSION} · deployed ${builtAt()}`;
+  // An update to take is a button, not a sentence about the badge.
+  const stale = isStale();
+  $('menuUpdate').hidden = !stale;
+  $('menuUpdate').textContent = stale ? `Update to v${newest()}` : '';
+  $('menuVersion').textContent = `v${APP_VERSION}`;
 }
 
 function wireMenu() {
@@ -180,6 +180,7 @@ function wireMenu() {
   menu.addEventListener('click', (e) => { if (e.target === menu) menu.close(); });   // a tap outside it
   $('menuSettings').onclick = () => { menu.close(); $('settingsBtn').click(); };
   $('menuTheme').onclick = () => { cycleTheme(); renderMenu(); };
+  $('menuUpdate').onclick = () => { menu.close(); hardReload(); };
 }
 
 /**

@@ -42,22 +42,28 @@ export function renderLog() {
   const note = $('rangenote');
   note.hidden = !multi;
   if (multi) {
-    note.innerHTML = `<span>${S.range.length} days selected — choosing a code applies to the work days among them.</span><button id="clearRange">Clear</button>`;
+    note.innerHTML = `<span>${S.range.length} days selected</span><button id="clearRange">Clear</button>`;
     $('clearRange').onclick = () => { S.range = []; rerender(); };
   }
 
   // Weekends aren't worked: nothing on a Saturday or Sunday can be changed.
-  // A range or set of picks that merely includes one still works - the
-  // weekend days in it are skipped.
+  // A weekend on its own shows just its W - no codes, times or comment to try
+  // and be refused. A range or set of picks that merely includes one still
+  // works - the weekend days in it are skipped.
   const weekend = isWeekend(date);
   const locked = weekend && !multi;
-  $('logCard').classList.toggle('locked', weekend);
-  $('lockNote').hidden = !locked;
+  $('logCard').classList.toggle('weekend', weekend);
+  $('logCard').classList.toggle('locked', locked);
   for (const id of ['inTime', 'outTime', 'comment', 'stdTimes', 'clearTimes']) $(id).disabled = weekend;
 
+  if (locked) {
+    const w = S.codeMap.W;
+    $('chipzone').innerHTML = `<div class="chipgroup"><div class="chips"><button class="chip code" aria-pressed="true" disabled style="${codeVars(w)}"><span class="dot"></span>${w.label}</button></div></div>`;
+  } else {
+  // Grouped by spacing alone; each group keeps its name for screen readers.
   const groups = [['work', 'Work'], ['leave', 'Leave'], ['off', 'Not a work day']];
   $('chipzone').innerHTML = groups.map(([g, title]) => `
-    <div class="chipgroup"><div class="glabel">${title}</div><div class="chips">
+    <div class="chipgroup" role="group" aria-label="${title}"><div class="chips">
       ${S.codes.filter((c) => c.group === g).map((c) => `
         <button class="chip code" data-code="${c.code}" aria-pressed="${rec.code === c.code && !multi}"${locked ? ' disabled' : ''}
           style="${codeVars(c)}">
@@ -66,6 +72,7 @@ export function renderLog() {
     </div></div>`).join('') +
     `<div class="chipgroup clearzone"><button class="chip clear" data-code=""${locked ? ' disabled' : ''}><span aria-hidden="true">✕</span>Clear day</button></div>`;
   $('chipzone').querySelectorAll('.chip').forEach((b) => { b.onclick = () => applyCode(b.dataset.code); });
+  }
 
   fill('inTime', rec.in || '', sameDay);
   fill('outTime', rec.out || '', sameDay);
@@ -93,7 +100,7 @@ function updateHrs() {
     text = `${fmtDur(minutesBetween(inV, outV) / 60)}${overnight ? ' · Out is before In' : ''}`;
   } else if (inV && !outV && S.sel === S.today && clockTime() > inV) {
     const mins = minutesBetween(inV, clockTime());
-    text = `${fmtDur(mins / 60)} so far`;
+    text = fmtDur(mins / 60);                 // still counting: styled as running (.sofar)
   }
   el.textContent = text;
   el.classList.toggle('warn', !!overnight);
@@ -262,7 +269,7 @@ async function punchNow(force) {
   updateHrs();
   const ok = await saveDays({ [date]: { code: 'O', ...fields() } }, null, { quiet: true });
   if (!ok || S.sel !== date) return;
-  showPunched(`${label} at ${now}${before?.code === 'O' ? '' : ' · saved as an Office day'}`,
+  showPunched(`${label} ${now}`,
     () => saveDays({ [date]: before }, 'Put back as it was'));
 }
 

@@ -149,13 +149,11 @@ export function renderLegend() {
 // The workbook's key panel: two totals counted differently from the monthly rows.
 export function renderKeyTotals() {
   const t = S.summary.total;
+  // Names that say what they count; the formula is on hover.
   $('keytotals').innerHTML = `
-    <span class="kt"><span class="k">Total days worked</span><span class="v">${t.daysWorked}</span>
-      <span class="f">O + H + WS</span></span>
-    <span class="kt"><span class="k">Total work days</span><span class="v">${t.totalWorkDays}</span>
-      <span class="f">incl. leave</span></span>
-    <span class="kt"><span class="k">Work days for the requirement</span><span class="v">${t.workDays}</span>
-      <span class="f">O + H${t.workingSickDays ? ` · excludes ${t.workingSickDays} working sick` : ''}</span></span>`;
+    <span class="kt" title="Office + Home + Working sick"><span class="k">Days worked</span><span class="v">${t.daysWorked}</span></span>
+    <span class="kt" title="Every day that isn't a weekend, public holiday or non-working day, leave included"><span class="k">Work days</span><span class="v">${t.totalWorkDays}</span></span>
+    <span class="kt" title="Office + Home: the days the ${Math.round(S.settings.officeReqPct * 100)}% is measured on${t.workingSickDays ? ` (${t.workingSickDays} working sick not counted)` : ''}"><span class="k">Counted for target</span><span class="v">${t.workDays}</span></span>`;
 }
 
 // Victoria sets the Friday before the AFL Grand Final each year once the AFL
@@ -174,9 +172,8 @@ export function renderGridNote() {
   el.hidden = !show;
   if (!show) return;
   const many = years.length > 1;
-  el.innerHTML = `<span>⚠</span><span class="gn-text">AFL Grand Final Friday ${many ? 'dates' : 'date'} for
-    ${years.join(' and ')} ${many ? 'have' : 'has'} not been announced by the Victorian Government yet,
-    so ${many ? 'those days are' : 'that day is'} not marked as a public holiday. Add it by hand once it's confirmed.</span>
+  // One line; the why is on hover.
+  el.innerHTML = `<span>⚠</span><span class="gn-text" title="Victoria sets it once the AFL releases its schedule, so ${many ? 'those days aren\'t' : 'it isn\'t'} marked as a public holiday yet. Code it PH by hand once it's announced.">AFL Grand Final Friday ${years.join(' and ')} not announced yet</span>
     <button class="gn-close" type="button" aria-label="Dismiss this note" title="Dismiss">✕</button>`;
   el.querySelector('.gn-close').onclick = () => {
     try { localStorage.setItem(NOTE_KEY, JSON.stringify([...new Set([...closed, ...years])])); } catch { /* kept for this visit only */ }
@@ -203,7 +200,6 @@ function hourCells(m) {
 }
 
 export function renderYearList(onPickMonth) {
-  const req = Math.round(S.settings.officeReqPct * 100);
   // Days: the office share and against the target; then the same for hours.
   const row = (m, label) => {
     const [hpct, hgap] = hourCells(m);
@@ -214,8 +210,7 @@ export function renderYearList(onPickMonth) {
       ${hgap}`;
   };
   $('yearList').innerHTML =
-    `<p class="yl-note">Office share and against the ${req}% target, for days then hours, incl. planned. Red is below ${req}%.</p>`
-    + `<div class="yl-row yl-head"><span class="m">Month</span><span title="Office days as a share of work days">Days %</span><span title="Office days ahead (+) or short (−) of the target">Days +/-</span><span title="Office hours as a share of available hours">Hours %</span><span title="Office hours ahead (+) or short (−) of the target">Hours +/-</span></div>`
+    `<div class="yl-row yl-head"><span class="m">Month</span><span title="Office days as a share of work days">Days %</span><span title="Office days ahead (+) or short (−) of the target">Days +/-</span><span title="Office hours as a share of available hours">Hours %</span><span title="Office hours ahead (+) or short (−) of the target">Hours +/-</span></div>`
     + S.summary.months.map((m, i) => `<button class="yl-row" data-i="${i}" aria-label="Open ${m.name} ${m.year}">${row(m, `${m.name.slice(0, 3)} ${String(m.year).slice(2)}`)}</button>`).join('')
     + `<div class="yl-row yl-total">${row(S.summary.total, `FY${S.fy}`)}</div>`;
   $('yearList').querySelectorAll('button[data-i]').forEach((b) => { b.onclick = () => onPickMonth(Number(b.dataset.i)); });

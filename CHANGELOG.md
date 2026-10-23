@@ -10,6 +10,29 @@ Versions are `MAJOR.MINOR.PATCH`:
 `npm run bump [major|minor|patch]` moves the number in every place it appears
 and opens an entry here. Nothing else should edit a version by hand.
 
+## 1.19.0 - 2026-10-23
+
+- **Less text, same meaning.** Taglines, helper text and secondary labels are gone from
+  every screen. Where a screen needed them, the layout now does the job:
+  - A weekend on its own shows just its **W**: no greyed-out codes, times or comment, and
+    no sentence saying it can't be changed.
+  - Codes are grouped by spacing, without the WORK / LEAVE / NOT A WORK DAY labels.
+  - The live hours while you're in show a pulsing dot instead of "so far".
+  - The version badge only appears when there's an update; the phone menu then has an
+    **Update to v…** button.
+  - **Install app** appears on the setup screen where the browser can install it.
+- **Cut:** the header's year range, the keyboard hint, the grid hint, the Month tab's
+  instruction and legend, the Year tab's explanatory note, the formulas on the cards and
+  key totals, *incl. planned* tags, the setup screen's introduction and install tip, the
+  recovery-code explanation, the storage and data-location notes in Settings, and the notes
+  under Settings' calendar actions.
+- **Kept, shorter:** feedback and warnings. *Saved*, *43 days moved*, *Cloud backup off*,
+  *Backed up 2 min ago*, *Not backed up*, *In 08:52* with Undo, and a one-line AFL note.
+- The workings behind each figure (targets, formulas, planned hours, estimates) are in the
+  hover text, which screen readers and assistants read too. Groups and headings that lost
+  their visible label keep it for screen readers.
+- README: an **Interface copy** rule, so future changes keep to this.
+
 ## 1.18.1 - 2026-10-08
 
 - Hours and minutes run together with no space: **+3h15m**, *60h25m of 48h8m*, *8h49m so far*.
