@@ -279,7 +279,10 @@ Gaps to the target are signed, the same way as the cards: +3:00 ahead, −20:45 
 **Hours are measured against the office target.** "Office hours vs 50%" is how many hours
 you're ahead or short of what the requirement asks for on the days to date: 50% of a
 standard day for every work day so far. Today counts once its In and Out are both in, so
-being at work doesn't read as behind. A month still to come shows nothing yet. The
+being at work doesn't read as behind. A month still to come shows nothing yet.
+The exception is the phone's Today card: once you're clocked in it counts today to the
+minute (a green dot by the heading), so you can watch the hours come in. Everywhere else
+waits for the Out time. The
 average office day is still there, but as background.
 
 **Planning ahead.** Codes and times entered on days still to come are your plan. The month

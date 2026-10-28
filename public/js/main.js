@@ -3,7 +3,7 @@ import { S, subscribe, loadState, serverToday, runtime } from './state.js';
 import { $, builtAt as builtAtOf } from './format.js';
 import { initTheme, cycleTheme, getTheme, onThemeChange, THEMES, THEME_LABEL, ICON } from './theme.js';
 import { anyDialogOpen, attempt } from './dialogs.js';
-import { renderTiles, renderSoFar, wireTiles } from './tiles.js';
+import { renderTiles, renderSoFar, wireTiles, tickSoFar } from './tiles.js';
 import { renderLog, wireLog, punch } from './log.js';
 import { renderGrid, renderLegend, renderKeyTotals, renderGridNote, renderYearList, allHourCols, setAllHourCols } from './grid.js';
 import { renderMonth, wireMonth, showMonth, endSelecting } from './month.js';
@@ -210,6 +210,7 @@ export async function boot(appVersion) {
   if (/Mac|iPhone|iPad/.test(navigator.platform)) document.querySelectorAll('.mod').forEach((e) => { e.textContent = '⌘'; });
   wireMenu();
   wireTiles();
+  tickSoFar();
   wireLog({ rerender: renderAll });
   wireMonth({ openDay });
   wireSettings();

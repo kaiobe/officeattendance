@@ -10,6 +10,14 @@ Versions are `MAJOR.MINOR.PATCH`:
 `npm run bump [major|minor|patch]` moves the number in every place it appears
 and opens an entry here. Nothing else should edit a version by hand.
 
+## 1.20.0 - 2026-10-29
+
+- **The phone's "so far" card is live while you're at work.** On the Today tab, once you've
+  clocked in, the card counts today up to the minute, as if you clocked out now, and moves
+  every 20 seconds while you look at it. A green dot by the heading shows it's live. Clocking
+  out settles it on the saved figures. The Month tab, the Year tab and the desktop tiles are
+  unchanged: they still count today only once both times are in.
+
 ## 1.19.0 - 2026-10-23
 
 - **Less text, same meaning.** Taglines, helper text and secondary labels are gone from

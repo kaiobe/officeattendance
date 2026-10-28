@@ -1,8 +1,9 @@
 /** The banner: office days, office hours against the target, and day length, for the chosen period. */
 import { S } from './state.js';
-import { $ } from './format.js';
+import { $, nowHHMM } from './format.js';
 import { daysStat, hoursStat, dayLengthStat } from './stat.js';
-import { pad } from '../lib/dates.js';
+import { pad, isTime } from '../lib/dates.js';
+import { summarise } from '../core/calc.js';
 
 /** The month the Month view opens on: the current one, else the last with any data. */
 function defaultMonthIdx() {
@@ -76,8 +77,42 @@ export function wireTiles() {
  * Year tab's period is set to.
  */
 export function renderSoFar() {
-  const m = S.summary.mtd;
+  const live = liveMtd();
+  const m = live || S.summary.mtd;
+  $('soFar').classList.toggle('live', !!live);
   $('soFar').innerHTML = `
     <div class="sf-head"><h2>${m.name} ${m.partial ? 'so far' : m.year}</h2></div>
     <div class="stat-pair">${daysStat(m, S.settings.officeReqPct, { label: 'Days' })}${hoursStat(m, S.settings.officeReqPct, S.settings.stdDayHours, { label: 'Hours' })}</div>`;
+}
+
+/**
+ * Today, while you're at work: the month so far as if you clocked out now.
+ * The saved figures leave an office day out until both times are in (so being
+ * at work never reads as behind - see calc.js); this card alone counts today
+ * from your In time to the minute, so it moves as the day goes. Desktop tiles
+ * and the Month tab keep the saved figures. Null when there's nothing running.
+ */
+function liveMtd() {
+  const m = S.summary?.mtd;
+  const rec = S.days[S.today];
+  if (!m?.partial || rec?.code !== 'O' || !isTime(rec.in) || isTime(rec.out)) return null;
+  const now = nowHHMM(S.tz);
+  if (now <= rec.in) return null;
+  const dates = [];
+  for (let d = 1; ; d++) {
+    const date = `${m.year}-${pad(m.month)}-${pad(d)}`;
+    if (date > S.today) break;
+    dates.push(date);
+  }
+  const days = { ...S.days, [S.today]: { ...rec, out: now } };
+  return { ...m, ...summarise(dates, days, S.settings, S.today) };
+}
+
+/** Keep the live card moving: every 20 seconds while it's live and on screen. */
+export function tickSoFar() {
+  setInterval(() => {
+    if (!S.summary || document.visibilityState !== 'visible') return;
+    if (getComputedStyle($('soFar')).display === 'none') return;   // desktop, or another tab
+    if (liveMtd() || $('soFar').classList.contains('live')) renderSoFar();
+  }, 20000);
 }
